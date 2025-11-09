@@ -2,8 +2,10 @@
 using api.Models;
 using api.Data; // Add this using directive for ApplicationDbContext
 using Microsoft.EntityFrameworkCore; // Add this for DbContext options
+using MongoDB.Driver; // Add this for MongoDB types
 
 var builder = WebApplication.CreateBuilder(args);
+
 
 // Add services to the container.
 builder.Services.AddOpenApi();
@@ -14,6 +16,23 @@ builder.Services.AddAuthorization();
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+
+builder.Services.Configure<MongoDbSettings>(
+    builder.Configuration.GetSection("MongoDbSettings"));
+
+builder.Services.AddSingleton<IMongoClient>(sp =>
+{
+    var settings = builder.Configuration.GetSection("MongoDbSettings").Get<MongoDbSettings>();
+    return new MongoClient(settings.ConnectionString);
+});
+
+builder.Services.AddSingleton(sp =>
+{
+    var settings = builder.Configuration.GetSection("MongoDbSettings").Get<MongoDbSettings>();
+    var client = sp.GetRequiredService<IMongoClient>();
+    var database = client.GetDatabase(settings.DatabaseName);
+    return database.GetCollection<QuarterlyUpdate>(settings.QuarterlyUpdatesCollectionName);
+});
 
 var app = builder.Build();
 
