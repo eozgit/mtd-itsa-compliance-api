@@ -5,11 +5,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Builder; // Required for IEndpointRouteBuilder extension
 using Microsoft.AspNetCore.Http; // Required for Results, HttpContext
 using MongoDB.Driver; // For IMongoCollection
+using api.Filters; // NEW: Import the Filters namespace
 
 // Import the AuthEndpoints for the helper function
 using static api.Endpoints.AuthEndpoints;
 
 namespace api.Endpoints;
+
 
 
 public static class QuarterlyUpdateEndpoints
@@ -18,19 +20,13 @@ public static class QuarterlyUpdateEndpoints
     {
         app.MapGet("/api/quarters", async (
             HttpContext httpContext,
-            ApplicationDbContext dbContext,
-            IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) =>
+            IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) => // Removed ApplicationDbContext, as business is already retrieved
         {
-            var currentUserId = GetUserIdFromMockToken(httpContext.Request.Headers.Authorization.FirstOrDefault());
-            if (string.IsNullOrEmpty(currentUserId))
-            {
-                return Results.Unauthorized();
-            }
+            // Retrieve currentUserId and business from HttpContext.Items set by the filter
+            var currentUserId = httpContext.Items["currentUserId"] as string;
+            var business = httpContext.Items["business"] as Business;
 
-            var business = await dbContext.Businesses
-                                          .Where(b => b.UserId == currentUserId)
-                                          .FirstOrDefaultAsync();
-
+            if (string.IsNullOrEmpty(currentUserId)) return Results.Unauthorized(); // Should not happen
             if (business == null)
             {
                 return Results.NotFound("No business found for the current user.");
@@ -45,8 +41,7 @@ public static class QuarterlyUpdateEndpoints
                 return Results.NotFound($"No quarterly updates found for business ID {business.Id}.");
             }
 
-            // Calculate Cumulative Estimated Tax Liability
-            const decimal taxRate = 0.20m; // Example: 20% tax rate
+            const decimal taxRate = 0.20m;
             var submittedQuarters = quarters.Where(q => q.Status == "SUBMITTED").ToList();
             var totalNetProfitSubmitted = submittedQuarters.Sum(q => q.NetProfit);
             var cumulativeTaxLiability = totalNetProfitSubmitted * taxRate;
@@ -57,8 +52,112 @@ public static class QuarterlyUpdateEndpoints
                 TotalNetProfitSubmitted = totalNetProfitSubmitted,
                 CumulativeEstimatedTaxLiability = cumulativeTaxLiability
             });
-        });
+        })
+        .AddEndpointFilter<AuthAndBusinessFilter>(); // Apply the filter here!
 
-        // ...existing code...
+        app.MapPut("/api/quarter/{id}", async (
+            string id,
+            QuarterlyUpdateRequest model,
+            HttpContext httpContext,
+            IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) => // Removed ApplicationDbContext
+        {
+            // Retrieve currentUserId and business from HttpContext.Items set by the filter
+            var currentUserId = httpContext.Items["currentUserId"] as string;
+            var business = httpContext.Items["business"] as Business;
+
+            if (string.IsNullOrEmpty(currentUserId)) return Results.Unauthorized(); // Should not happen
+            if (business == null)
+            {
+                return Results.NotFound("No business found for the current user.");
+            }
+
+            var quarterToUpdate = await quarterlyUpdatesCollection
+                                        .Find(q => q.Id == id && q.BusinessId == business.Id)
+                                        .FirstOrDefaultAsync();
+
+            if (quarterToUpdate == null)
+            {
+                return Results.NotFound($"Quarterly update with ID '{id}' not found for business ID '{business.Id}'.");
+            }
+
+            if (quarterToUpdate.Status != "DRAFT")
+            {
+                return Results.BadRequest("Only quarters in 'DRAFT' status can be updated.");
+            }
+
+            quarterToUpdate.TaxableIncome = model.TaxableIncome;
+            quarterToUpdate.AllowableExpenses = model.AllowableExpenses;
+            quarterToUpdate.NetProfit = model.TaxableIncome - model.AllowableExpenses;
+
+            await quarterlyUpdatesCollection.ReplaceOneAsync(q => q.Id == id, quarterToUpdate);
+
+            return Results.Ok(new
+            {
+                quarterToUpdate.Id,
+                quarterToUpdate.BusinessId,
+                quarterToUpdate.TaxYear,
+                quarterToUpdate.QuarterName,
+                quarterToUpdate.TaxableIncome,
+                quarterToUpdate.AllowableExpenses,
+                quarterToUpdate.NetProfit,
+                quarterToUpdate.Status,
+                Message = "Draft saved."
+            });
+        })
+        .AddEndpointFilter<AuthAndBusinessFilter>(); // Apply the filter here!
+
+        app.MapPost("/api/quarter/{id}/submit", async (
+            string id,
+            HttpContext httpContext,
+            IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) => // Removed ApplicationDbContext
+        {
+            // Retrieve currentUserId and business from HttpContext.Items set by the filter
+            var currentUserId = httpContext.Items["currentUserId"] as string;
+            var business = httpContext.Items["business"] as Business;
+
+            if (string.IsNullOrEmpty(currentUserId)) return Results.Unauthorized(); // Should not happen
+            if (business == null)
+            {
+                return Results.NotFound("No business found for the current user.");
+            }
+
+            var quarterToSubmit = await quarterlyUpdatesCollection
+                                        .Find(q => q.Id == id && q.BusinessId == business.Id)
+                                        .FirstOrDefaultAsync();
+
+            if (quarterToSubmit == null)
+            {
+                return Results.NotFound($"Quarterly update with ID '{id}' not found for business ID '{business.Id}'.");
+            }
+
+            if (quarterToSubmit.Status != "DRAFT")
+            {
+                return Results.BadRequest("Only quarters in 'DRAFT' status can be submitted.");
+            }
+
+            quarterToSubmit.Status = "SUBMITTED";
+            quarterToSubmit.SubmissionDetails = new SubmissionDetails
+            {
+                RefNumber = $"MTD-ACK-{Guid.NewGuid().ToString().Substring(0, 8)}",
+                SubmittedAt = DateTime.UtcNow
+            };
+
+            await quarterlyUpdatesCollection.ReplaceOneAsync(q => q.Id == id, quarterToSubmit);
+
+            return Results.Ok(new
+            {
+                quarterToSubmit.Id,
+                quarterToSubmit.BusinessId,
+                quarterToSubmit.TaxYear,
+                quarterToSubmit.QuarterName,
+                quarterToSubmit.TaxableIncome,
+                quarterToSubmit.AllowableExpenses,
+                quarterToSubmit.NetProfit,
+                quarterToSubmit.Status,
+                quarterToSubmit.SubmissionDetails,
+                Message = "Quarter submitted successfully."
+            });
+        })
+        .AddEndpointFilter<AuthAndBusinessFilter>(); // Apply the filter here!
     }
 }

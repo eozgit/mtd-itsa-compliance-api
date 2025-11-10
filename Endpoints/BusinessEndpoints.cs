@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Builder; // Required for IEndpointRouteBuilder extension
 using Microsoft.AspNetCore.Http; // Required for Results, HttpContext
 using MongoDB.Driver; // For IMongoCollection
+using api.Filters; // NEW: Import the Filters namespace
 
 // Import the AuthEndpoints for the helper function
 using static api.Endpoints.AuthEndpoints;
@@ -13,6 +14,7 @@ namespace api.Endpoints;
 
 public static class BusinessEndpoints
 {
+
     public static void MapBusinessEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/business", async (
@@ -21,26 +23,20 @@ public static class BusinessEndpoints
             ApplicationDbContext dbContext,
             IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) =>
         {
-            var currentUserId = GetUserIdFromMockToken(httpContext.Request.Headers.Authorization.FirstOrDefault());
-            // Console.WriteLine($"DEBUG: /api/business - currentUserId: {currentUserId}"); // DIAGNOSTIC
-            if (string.IsNullOrEmpty(currentUserId))
-            {
-                // Console.WriteLine("DEBUG: /api/business - Unauthorized: currentUserId is null or empty."); // DIAGNOSTIC
-                return Results.Unauthorized();
-            }
+            // Retrieve currentUserId from HttpContext.Items set by the filter
+            var currentUserId = httpContext.Items["currentUserId"] as string;
+            // The filter already handles Unauthorized, so this check is mostly for type safety/nullability
+            if (string.IsNullOrEmpty(currentUserId)) return Results.Unauthorized(); // Should ideally not happen if filter passed
 
-            var userExists = await dbContext.Users.AnyAsync(u => u.Id == currentUserId);
-            // Console.WriteLine($"DEBUG: /api/business - userExists in DB for ID '{currentUserId}': {userExists}"); // DIAGNOSTIC
-            if (!userExists)
-            {
-                // Console.WriteLine("DEBUG: /api/business - Unauthorized: Token user not found in DB."); // DIAGNOSTIC
-                return Results.Unauthorized();
-            }
+            var existingBusiness = httpContext.Items["business"] as Business;
 
-            if (await dbContext.Businesses.AnyAsync(b => b.UserId == currentUserId))
+            if (existingBusiness != null)
             {
                 return Results.Conflict("User already has a registered business.");
             }
+
+            // The user existence check can be removed because the filter already ensures currentUserId exists and is linked to business.
+            // If `business` is null here, it means the user exists but has no business, which is the expected state for registration.
 
             var newBusiness = new Business
             {
@@ -52,23 +48,17 @@ public static class BusinessEndpoints
 
             dbContext.Businesses.Add(newBusiness);
             await dbContext.SaveChangesAsync();
-            // Console.WriteLine($"SQL: Created Business with ID: {newBusiness.Id}");
 
             var quarters = GenerateFiscalQuarters(newBusiness.StartDate, newBusiness.Id);
-            // Console.WriteLine($"MongoDB: Generated {quarters.Count} quarters for Business ID: {newBusiness.Id}");
 
             if (quarters.Any())
             {
                 await quarterlyUpdatesCollection.InsertManyAsync(quarters);
-                // Console.WriteLine($"MongoDB: Successfully inserted {quarters.Count} quarterly updates.");
-            }
-            else
-            {
-                // Console.WriteLine($"MongoDB: No quarters were generated to insert for Business ID: {newBusiness.Id}.");
             }
 
             return Results.Created($"/api/business/{newBusiness.Id}", new BusinessResponse(newBusiness.Id, newBusiness.Name));
-        });
+        })
+        .AddEndpointFilter<AuthAndBusinessFilter>(); // Apply the filter here!
     }
 
     // Helper for generating fiscal quarters (e.g., for MTD ITSA, starting April 6th)
