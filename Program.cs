@@ -290,6 +290,67 @@ app.MapPut("/api/quarter/{id}", async (
 });
 
 
+app.MapPost("/api/quarter/{id}/submit", async (
+    string id, // Quarter ID from route
+    HttpContext httpContext,
+    ApplicationDbContext dbContext,
+    IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) =>
+{
+    var currentUserId = GetUserIdFromMockToken(httpContext.Request.Headers.Authorization.FirstOrDefault());
+    if (string.IsNullOrEmpty(currentUserId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var business = await dbContext.Businesses
+                                  .Where(b => b.UserId == currentUserId)
+                                  .FirstOrDefaultAsync();
+
+    if (business == null)
+    {
+        return Results.NotFound("No business found for the current user.");
+    }
+
+    var quarterToSubmit = await quarterlyUpdatesCollection
+                                .Find(q => q.Id == id && q.BusinessId == business.Id)
+                                .FirstOrDefaultAsync();
+
+    if (quarterToSubmit == null)
+    {
+        return Results.NotFound($"Quarterly update with ID '{id}' not found for business ID '{business.Id}'.");
+    }
+
+    // Ensure quarter is in DRAFT status before allowing submission
+    if (quarterToSubmit.Status != "DRAFT")
+    {
+        return Results.BadRequest("Only quarters in 'DRAFT' status can be submitted.");
+    }
+
+    // Update status and add submission details
+    quarterToSubmit.Status = "SUBMITTED";
+    quarterToSubmit.SubmissionDetails = new SubmissionDetails
+    {
+        RefNumber = $"MTD-ACK-{Guid.NewGuid().ToString().Substring(0, 8)}", // Generate a mock ref number
+        SubmittedAt = DateTime.UtcNow
+    };
+
+    await quarterlyUpdatesCollection.ReplaceOneAsync(q => q.Id == id, quarterToSubmit);
+
+    return Results.Ok(new
+    {
+        quarterToSubmit.Id,
+        quarterToSubmit.BusinessId,
+        quarterToSubmit.TaxYear,
+        quarterToSubmit.QuarterName,
+        quarterToSubmit.TaxableIncome,
+        quarterToSubmit.AllowableExpenses,
+        quarterToSubmit.NetProfit,
+        quarterToSubmit.Status,
+        quarterToSubmit.SubmissionDetails,
+        Message = "Quarter submitted successfully."
+    });
+});
+
 // Map Quarterly Data Endpoints
 app.MapGet("/api/quarters", async (
     HttpContext httpContext, // Inject HttpContext to get headers
