@@ -1,1 +1,35 @@
 @api_HostAddress = http://localhost:5129
+
+### Test User Registration
+POST {{api_HostAddress}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "Password123!",
+  "userName": "TestUser"
+}
+
+### Test User Login
+POST {{api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "Password123!"
+}
+
+### Register a Business (Requires a valid token from login)
+# Replace '{{auth_token}}' with the 'token' value received from the /api/auth/login response.
+# In some HTTP clients (like VS Code REST Client), you can capture this automatically.
+# Example: @auth_token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+@auth_token = mock-jwt-token-for-some-guid-TestUser-test@example.com 
+
+POST {{api_HostAddress}}/api/business
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "name": "My Awesome Freelance Business",
+  "startDate": "2025-04-06T00:00:00"
+}
