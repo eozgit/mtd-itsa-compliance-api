@@ -231,6 +231,65 @@ List<QuarterlyUpdate> GenerateFiscalQuarters(DateTime startDate, int businessId)
     return quarters;
 }
 
+
+app.MapPut("/api/quarter/{id}", async (
+    string id, // Quarter ID from route
+    QuarterlyUpdateRequest model,
+    HttpContext httpContext,
+    ApplicationDbContext dbContext,
+    IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) =>
+{
+    var currentUserId = GetUserIdFromMockToken(httpContext.Request.Headers.Authorization.FirstOrDefault());
+    if (string.IsNullOrEmpty(currentUserId))
+    {
+        return Results.Unauthorized();
+    }
+
+    var business = await dbContext.Businesses
+                                  .Where(b => b.UserId == currentUserId)
+                                  .FirstOrDefaultAsync();
+
+    if (business == null)
+    {
+        return Results.NotFound("No business found for the current user.");
+    }
+
+    var quarterToUpdate = await quarterlyUpdatesCollection
+                                .Find(q => q.Id == id && q.BusinessId == business.Id)
+                                .FirstOrDefaultAsync();
+
+    if (quarterToUpdate == null)
+    {
+        return Results.NotFound($"Quarterly update with ID '{id}' not found for business ID '{business.Id}'.");
+    }
+
+    // Ensure quarter is in DRAFT status before allowing updates
+    if (quarterToUpdate.Status != "DRAFT")
+    {
+        return Results.BadRequest("Only quarters in 'DRAFT' status can be updated.");
+    }
+
+    quarterToUpdate.TaxableIncome = model.TaxableIncome;
+    quarterToUpdate.AllowableExpenses = model.AllowableExpenses;
+    quarterToUpdate.NetProfit = model.TaxableIncome - model.AllowableExpenses; // Recalculate NetProfit
+
+    await quarterlyUpdatesCollection.ReplaceOneAsync(q => q.Id == id, quarterToUpdate);
+
+    return Results.Ok(new
+    {
+        quarterToUpdate.Id,
+        quarterToUpdate.BusinessId,
+        quarterToUpdate.TaxYear,
+        quarterToUpdate.QuarterName,
+        quarterToUpdate.TaxableIncome,
+        quarterToUpdate.AllowableExpenses,
+        quarterToUpdate.NetProfit,
+        quarterToUpdate.Status,
+        Message = "Draft saved."
+    });
+});
+
+
 // Map Quarterly Data Endpoints
 app.MapGet("/api/quarters", async (
     HttpContext httpContext, // Inject HttpContext to get headers
