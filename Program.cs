@@ -1,10 +1,8 @@
-
 using api.Models;
 using api.Data;
 using Microsoft.EntityFrameworkCore;
 using MongoDB.Driver;
 using Microsoft.Extensions.Options;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using api.Endpoints;
 using api.Filters;
 using Microsoft.OpenApi.Models; // NEW: Required for OpenApiInfo, OpenApiSecurityScheme etc.
@@ -94,3 +92,5 @@ app.MapBusinessEndpoints();
 app.MapQuarterlyUpdateEndpoints();
 
 app.Run();
+
+public partial class Program { } // Make the Program class accessible to integration tests
