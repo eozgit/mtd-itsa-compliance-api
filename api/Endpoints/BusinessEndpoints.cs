@@ -1,3 +1,4 @@
+
 using api.Data;
 using api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -5,6 +6,7 @@ using Microsoft.AspNetCore.Builder; // Required for IEndpointRouteBuilder extens
 using Microsoft.AspNetCore.Http; // Required for Results, HttpContext
 using MongoDB.Driver; // For IMongoCollection
 using api.Filters; // NEW: Import the Filters namespace
+using Microsoft.AspNetCore.OpenApi; // NEW: Required for WithOpenApi extension
 
 // Import the AuthEndpoints for the helper function
 using static api.Endpoints.AuthEndpoints;
@@ -57,9 +59,12 @@ public static class BusinessEndpoints
 
             return Results.Created($"/api/business/{newBusiness.Id}", new BusinessResponse(newBusiness.Id, newBusiness.Name));
         })
-        .AddEndpointFilter<AuthAndBusinessFilter>(); // Apply the filter here!
+        .Produces<BusinessResponse>(StatusCodes.Status201Created) // Explicitly defines 201 Created response
+        .Produces(StatusCodes.Status401Unauthorized) // Explicitly defines 401 Unauthorized response
+        .Produces(StatusCodes.Status409Conflict)     // Explicitly defines 409 Conflict response
+        .AddEndpointFilter<AuthAndBusinessFilter>()  // Apply the filter here!
+        .WithOpenApi(); // Ensures these definitions are included in the OpenAPI spec
     }
-
     // Helper for generating fiscal quarters (e.g., for MTD ITSA, starting April 6th)
     private static List<QuarterlyUpdate> GenerateFiscalQuarters(DateTime startDate, int businessId)
     {

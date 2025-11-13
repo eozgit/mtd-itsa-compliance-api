@@ -4,6 +4,7 @@ using api.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Builder; // Required for IEndpointRouteBuilder extension
 using Microsoft.AspNetCore.Http; // Required for Results, HttpContext
+using Microsoft.AspNetCore.OpenApi; // Required for WithOpenApi extension
 
 namespace api.Endpoints;
 
@@ -28,7 +29,10 @@ public static class AuthEndpoints
             var token = GenerateMockJwtToken(userId, model.UserName, model.Email);
 
             return Results.Ok(new AuthResponse(userId, model.UserName, token));
-        });
+        })
+        .Produces<AuthResponse>(StatusCodes.Status200OK) // Explicitly defines 200 OK response with AuthResponse schema
+        .Produces(StatusCodes.Status409Conflict)         // Explicitly defines 409 Conflict response
+        .WithOpenApi(); // Ensures these definitions are included in the OpenAPI spec
 
         app.MapPost("/api/auth/login", async (LoginRequest model, ApplicationDbContext dbContext) =>
         {
@@ -41,7 +45,10 @@ public static class AuthEndpoints
             var token = GenerateMockJwtToken(user.Id, user.UserName, user.Email);
 
             return Results.Ok(new AuthResponse(user.Id, user.UserName, token));
-        });
+        })
+        .Produces<AuthResponse>(StatusCodes.Status200OK) // Explicitly defines 200 OK response with AuthResponse schema
+        .Produces(StatusCodes.Status401Unauthorized)     // Explicitly defines 401 Unauthorized response
+        .WithOpenApi(); // Ensures these definitions are included in the OpenAPI spec
     }
     // Helper for generating a mock JWT token (replace with real JWT implementation later)
     private static string GenerateMockJwtToken(string userId, string userName, string email)

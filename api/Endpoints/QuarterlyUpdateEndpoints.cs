@@ -6,13 +6,12 @@ using Microsoft.AspNetCore.Builder; // Required for IEndpointRouteBuilder extens
 using Microsoft.AspNetCore.Http; // Required for Results, HttpContext
 using MongoDB.Driver; // For IMongoCollection
 using api.Filters; // NEW: Import the Filters namespace
+using Microsoft.AspNetCore.OpenApi; // NEW: Required for WithOpenApi extension
 
 // Import the AuthEndpoints for the helper function
 using static api.Endpoints.AuthEndpoints;
 
 namespace api.Endpoints;
-
-
 
 public static class QuarterlyUpdateEndpoints
 {
@@ -75,7 +74,12 @@ public static class QuarterlyUpdateEndpoints
                 CumulativeEstimatedTaxLiability = cumulativeEstimatedTaxLiability
             });
         })
-        .AddEndpointFilter<AuthAndBusinessFilter>();
+        .Produces<QuartersResponse>(StatusCodes.Status200OK) // Explicitly defines 200 OK response
+        .Produces(StatusCodes.Status401Unauthorized)         // Explicitly defines 401 Unauthorized response
+        .Produces(StatusCodes.Status404NotFound)             // Explicitly defines 404 Not Found response
+        .AddEndpointFilter<AuthAndBusinessFilter>()
+        .WithOpenApi(); // Ensures these definitions are included in the OpenAPI spec
+
         app.MapPut("/api/quarter/{id}", async (
             string id,
             QuarterlyUpdateRequest model,
@@ -108,24 +112,30 @@ public static class QuarterlyUpdateEndpoints
 
             quarterToUpdate.TaxableIncome = model.TaxableIncome;
             quarterToUpdate.AllowableExpenses = model.AllowableExpenses;
-            quarterToUpdate.NetProfit = model.TaxableIncome - model.AllowableExpenses;
+            quarterToUpdate.NetProfit = model.TaxableIncome - quarterToUpdate.AllowableExpenses;
 
             await quarterlyUpdatesCollection.ReplaceOneAsync(q => q.Id == id, quarterToUpdate);
 
-            return Results.Ok(new
+            // Using the strongly typed DTO as indicated in the HANDOVER.md
+            return Results.Ok(new QuarterUpdateResponse
             {
-                quarterToUpdate.Id,
-                quarterToUpdate.BusinessId,
-                quarterToUpdate.TaxYear,
-                quarterToUpdate.QuarterName,
-                quarterToUpdate.TaxableIncome,
-                quarterToUpdate.AllowableExpenses,
-                quarterToUpdate.NetProfit,
-                quarterToUpdate.Status,
+                Id = quarterToUpdate.Id,
+                BusinessId = quarterToUpdate.BusinessId,
+                TaxYear = quarterToUpdate.TaxYear,
+                QuarterName = quarterToUpdate.QuarterName,
+                TaxableIncome = quarterToUpdate.TaxableIncome,
+                AllowableExpenses = quarterToUpdate.AllowableExpenses,
+                NetProfit = quarterToUpdate.NetProfit,
+                Status = quarterToUpdate.Status,
                 Message = "Draft saved."
             });
         })
-        .AddEndpointFilter<AuthAndBusinessFilter>(); // Apply the filter here!
+        .Produces<QuarterUpdateResponse>(StatusCodes.Status200OK) // Explicitly defines 200 OK response with the new DTO
+        .Produces(StatusCodes.Status401Unauthorized)              // Explicitly defines 401 Unauthorized response
+        .Produces(StatusCodes.Status404NotFound)                  // Explicitly defines 404 Not Found response
+        .Produces(StatusCodes.Status400BadRequest)                // Explicitly defines 400 Bad Request response
+        .AddEndpointFilter<AuthAndBusinessFilter>() // Apply the filter here!
+        .WithOpenApi(); // Ensures these definitions are included in the OpenAPI spec
 
         app.MapPost("/api/quarter/{id}/submit", async (
             string id,
@@ -165,20 +175,26 @@ public static class QuarterlyUpdateEndpoints
 
             await quarterlyUpdatesCollection.ReplaceOneAsync(q => q.Id == id, quarterToSubmit);
 
-            return Results.Ok(new
+            // Using the strongly typed DTO as indicated in the HANDOVER.md
+            return Results.Ok(new QuarterSubmissionResponse
             {
-                quarterToSubmit.Id,
-                quarterToSubmit.BusinessId,
-                quarterToSubmit.TaxYear,
-                quarterToSubmit.QuarterName,
-                quarterToSubmit.TaxableIncome,
-                quarterToSubmit.AllowableExpenses,
-                quarterToSubmit.NetProfit,
-                quarterToSubmit.Status,
-                quarterToSubmit.SubmissionDetails,
+                Id = quarterToSubmit.Id,
+                BusinessId = quarterToSubmit.BusinessId,
+                TaxYear = quarterToSubmit.TaxYear,
+                QuarterName = quarterToSubmit.QuarterName,
+                TaxableIncome = quarterToSubmit.TaxableIncome,
+                AllowableExpenses = quarterToSubmit.AllowableExpenses,
+                NetProfit = quarterToSubmit.NetProfit,
+                Status = quarterToSubmit.Status,
+                SubmissionDetails = quarterToSubmit.SubmissionDetails,
                 Message = "Quarter submitted successfully."
             });
         })
-        .AddEndpointFilter<AuthAndBusinessFilter>(); // Apply the filter here!
+        .Produces<QuarterSubmissionResponse>(StatusCodes.Status200OK) // Explicitly defines 200 OK response with the new DTO
+        .Produces(StatusCodes.Status401Unauthorized)                 // Explicitly defines 401 Unauthorized response
+        .Produces(StatusCodes.Status404NotFound)                     // Explicitly defines 404 Not Found response
+        .Produces(StatusCodes.Status400BadRequest)                   // Explicitly defines 400 Bad Request response
+        .AddEndpointFilter<AuthAndBusinessFilter>() // Apply the filter here!
+        .WithOpenApi(); // Ensures these definitions are included in the OpenAPI spec
     }
 }
