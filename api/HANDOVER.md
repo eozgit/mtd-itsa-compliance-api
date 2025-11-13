@@ -1,18 +1,4 @@
-# CodeCompanion Project Handover Document: MTD-ITSA Compliance Portal Starter
 
-**Date:** 2025-11-13
-**Author:** CodeCompanion (Current Session)
-**Project Lead:** Enis (User)
-
-## 1. Project Overview
-
-This project is a full-stack boilerplate for a **Making Tax Digital for Income Tax Self Assessment (MTD-ITSA) Compliance Portal**. It's designed to provide a robust starter kit with pre-built cross-cutting concerns to enable rapid development of core business logic. The backend uses ASP.NET Core Web API (C#), and the frontend is intended to be Angular (TypeScript).
-
-## 2. Project Specification (`REQ_SPEC.md`)
-
-The complete project specification, including goals, functional scope, technical stack requirements, API contracts (DTOs and Endpoints), hybrid database design (SQL Server for `Users`/`Businesses`, MongoDB for `QuarterlyUpdates`), frontend considerations, and system flows with Cucumber scenarios, is as follows:
-
-```markdown
 # Project Specification: MTD-ITSA Compliance Portal Starter
 
 **Version:** 1.0
@@ -231,7 +217,7 @@ All provided files have been reviewed and modified, and previous build/test fail
 
 *   Updated `Microsoft.EntityFrameworkCore.SqlServer` and `Microsoft.EntityFrameworkCore.Design` package versions to `9.0.0-preview.7.24406.2` for consistency with the test project's resolved dependencies.
 
-```xml
+````xml
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
@@ -252,14 +238,14 @@ All provided files have been reviewed and modified, and previous build/test fail
   </ItemGroup>
 
 </Project>
-```
+````
 
 ### 5.2. `api/Program.cs`
 
 *   The `public partial class Program { }` declaration has been added at the end of the file to make the `Program` class accessible to integration tests via `WebApplicationFactory`.
 *   Swagger/OpenAPI configuration has been added.
 
-```csharp
+````csharp
 using api.Models;
 using api.Data;
 using Microsoft.EntityFrameworkCore;
@@ -350,13 +336,13 @@ app.MapQuarterlyUpdateEndpoints();
 app.Run();
 
 public partial class Program { }
-```
+````
 
 ### 5.3. `api/Endpoints/AuthEndpoints.cs`
 
 *   **FIXED**: The `GenerateMockJwtToken` and `GetUserIdFromMockToken` helper methods were updated to use a `|` (pipe) character as a separator instead of `-` (hyphen) within the mock JWT token payload. This resolves an issue where hyphens present in GUIDs or user emails caused incorrect parsing of the `UserId`, leading to test failures.
 
-```csharp
+````csharp
 using api.Data;
 using api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -430,7 +416,7 @@ public static class AuthEndpoints
         return userId;
     }
 }
-```
+````
 
 ### 5.4. `api/Endpoints/BusinessEndpoints.cs`
 
@@ -445,7 +431,7 @@ public static class AuthEndpoints
 *   The `ProjectReference` to the main `api` project has been corrected to `..\api\api.csproj` to reflect the sibling folder structure.
 *   `Microsoft.AspNetCore.Mvc.Testing` and `Microsoft.EntityFrameworkCore.InMemory` package versions have been updated to `9.0.0-preview.7.24406.2` for consistency.
 
-```xml
+````xml
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
@@ -482,7 +468,7 @@ public static class AuthEndpoints
   </ItemGroup>
 
 </Project>
-```
+````
 
 ### 5.7. `api.Tests.Integration/CustomWebApplicationFactory.cs`
 
@@ -491,7 +477,7 @@ public static class AuthEndpoints
     *   It calls `MockQuarterlyUpdatesCollection.Reset()` to clear all `Moq` setups for the MongoDB collection.
 *   The `ConfigureWebHost` method no longer performs initial data clearing, as `ResetDatabase()` handles this per-test.
 
-```csharp
+````csharp
 using api.Data;
 using api.Models;
 using Microsoft.AspNetCore.Hosting;
@@ -561,13 +547,13 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
         builder.UseEnvironment("Development");
     }
 }
-```
+````
 
 ### 5.8. `api.Tests.Integration/AuthIntegrationTests.cs`
 
 *   Each test method now calls `_factory.ResetDatabase()` at the beginning to ensure a clean state for every test run. **All 4 `AuthIntegrationTests` are currently passing.**
 
-```csharp
+````csharp
 using Xunit;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -709,21 +695,65 @@ public class AuthIntegrationTests : IClassFixture<CustomWebApplicationFactory<Pr
         Assert.Equal(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
     }
 }
-```
+````
 
 ### 5.9. `api.Tests.Integration/BusinessAndQuarterIntegrationTests.cs` (NEW)
 
 *   This new test file has been created to cover the Business and Quarterly Update endpoints.
-*   The `BusinessRegistration_InitializesQuartersAndReturnsBusinessDetails` test has been implemented and is currently **passing successfully**. This test verifies:
-    *   Successful business registration via `/api/business`.
-    *   Correct persistence of business details in the in-memory SQL database.
-    *   Initialization of 4 `DRAFT` quarterly update documents in the mock MongoDB collection, linked to the new business.
+*   The following tests have been implemented and are currently **passing successfully**:
+    *   `BusinessRegistration_InitializesQuartersAndReturnsBusinessDetails`: Verifies successful business registration, persistence of details in SQL, and initialization of 4 `DRAFT` quarterly update documents in mock MongoDB.
+    *   `GetQuarters_ReturnsQuartersWithFinancialSummaries`: Verifies fetching all quarters for a business and confirms correct initial financial summaries (0.00 for `TotalNetProfitSubmitted` and `CumulativeEstimatedTaxLiability` when no quarters are submitted).
+    *   `UpdateQuarter_SavesDraftDataAndCalculatesNetProfit`: Verifies updating a `DRAFT` quarter's income/expenses, correct `NetProfit` calculation, and persistence in mock MongoDB.
+    *   `SubmitQuarter_ChangesStatusAndAddsSubmissionDetails`: Verifies changing a quarter's status from `DRAFT` to `SUBMITTED`, and the addition of `SubmissionDetails` in mock MongoDB.
 
-### 5.10. `api/Models/QuarterlyUpdate.cs`
+### 5.10. `api/Models/QuarterUpdateResponse.cs` (NEW)
+
+*   A new DTO to strongly type the response for the `/api/quarter/{id}` (PUT) endpoint.
+
+````csharp
+namespace api.Models;
+
+public class QuarterUpdateResponse
+{
+    public string Id { get; set; } = string.Empty;
+    public int BusinessId { get; set; }
+    public string TaxYear { get; set; } = string.Empty;
+    public string QuarterName { get; set; } = string.Empty;
+    public decimal TaxableIncome { get; set; }
+    public decimal AllowableExpenses { get; set; }
+    public decimal NetProfit { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty; // Matches 'Message' from the API response
+}
+````
+
+### 5.11. `api/Models/QuarterSubmissionResponse.cs` (NEW)
+
+*   A new DTO to strongly type the response for the `/api/quarter/{id}/submit` (POST) endpoint.
+
+````csharp
+namespace api.Models;
+
+public class QuarterSubmissionResponse
+{
+    public string Id { get; set; } = string.Empty;
+    public int BusinessId { get; set; }
+    public string TaxYear { get; set; } = string.Empty;
+    public string QuarterName { get; set; } = string.Empty;
+    public decimal TaxableIncome { get; set; }
+    public decimal AllowableExpenses { get; set; }
+    public decimal NetProfit { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public SubmissionDetails? SubmissionDetails { get; set; } // Nested DTO
+    public string Message { get; set; } = string.Empty; // Matches 'Message' from the API response
+}
+````
+
+### 5.12. `api/Models/QuarterlyUpdate.cs`
 
 No recent functional changes to this file, but its content is provided here for completeness and context regarding `QuarterlyUpdateStatus` which was clarified as a string.
 
-```csharp
+````csharp
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
@@ -760,7 +790,7 @@ public class SubmissionDetails
     public string RefNumber { get; set; } = string.Empty; // e.g., "MTD-ACK-..."
     public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
 }
-```
+````
 
 ## 6. Development Guidelines
 
@@ -778,14 +808,13 @@ public class SubmissionDetails
 
 ## 7. Current Task & Next Steps
 
-**Previous Goal:** Verify existing integration tests and then cover remaining APIs.
-**Current State:** All foundational integration tests, including for user authentication and business registration with quarter initialization, are passing. The compilation issues and the mock JWT token parsing problem have been resolved.
+**Previous Goal:** Implement integration tests for `Business` and `QuarterlyUpdate` endpoints.
+**Current State:** All primary API endpoints (`/api/auth/*`, `/api/business`, `/api/quarters`, `/api/quarter/{id}` (PUT), `/api/quarter/{id}/submit`) are now covered by passing integration tests.
 
 **Next Action for the AI Assistant:**
-The immediate next step is to continue writing new integration tests to cover the remaining API endpoints.
+The core API endpoints are covered. We can now consider:
 
-1.  **Implement `GetQuarters_ReturnsQuartersWithFinancialSummaries` test** in `api.Tests.Integration/BusinessAndQuarterIntegrationTests.cs`.
-    *   This test will verify the `/api/quarters` (GET) endpoint.
-    *   It will involve mocking MongoDB to return initialized quarter data and asserting the structure and initial financial summaries from the API response.
-2.  **Implement `UpdateQuarter_SavesDraftDataAndCalculatesNetProfit` test**.
-3.  **Implement `SubmitQuarter_ChangesStatusAndAddsSubmissionDetails` test**.
+1.  **Adding Edge Case/Error Handling Tests**: Write tests for scenarios like unauthorized access, trying to update a non-DRAFT quarter, submitting a non-DRAFT quarter, or providing invalid input.
+2.  **Implementing Tax Liability Calculation**: The `CumulativeEstimatedTaxLiability` is currently `0.00m` in tests because the actual calculation logic for estimated tax on submitted profit is not yet fully implemented in the API. This would involve adding a more sophisticated calculation.
+3.  **Frontend Development**: With a stable backend API, we could begin scaffolding the Angular frontend and connecting it to these endpoints.
+

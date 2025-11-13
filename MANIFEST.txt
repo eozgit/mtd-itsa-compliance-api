@@ -1,5 +1,5 @@
-MANIFEST.txt
 diff.txt
+MANIFEST.txt
 api.Tests.Integration/.gitignore
 api.Tests.Integration/AuthIntegrationTests.cs
 api.Tests.Integration/BusinessAndQuarterIntegrationTests.cs
@@ -21,7 +21,9 @@ api/Models/BusinessRequest.cs
 api/Models/BusinessResponse.cs
 api/Models/LoginRequest.cs
 api/Models/MongoDbSettings.cs
+api/Models/QuarterSubmissionResponse.cs
 api/Models/QuarterUpdateRequest.cs
+api/Models/QuarterUpdateResponse.cs
 api/Models/QuarterlyUpdate.cs
 api/Models/QuartersResponse.cs
 api/Models/RegisterRequest.cs
@@ -36,5 +38,5 @@ api/appsettings.Development.json
 api/appsettings.json
 api/mise.toml
 api/test_full_flow.sh
-clean_restore_build.sh
+clean_restore_build_test.sh
 mtd-itsa-compliance-api.sln
