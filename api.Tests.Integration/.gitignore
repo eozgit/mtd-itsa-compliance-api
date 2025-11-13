@@ -1,0 +1,54 @@
+
+# Visual Studio Code
+.vscode/
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+*.builds
+*.log
+*.vsix
+*.pdb
+*.suo
+
+# NuGet packages
+.nuget/
+*.nupkg
+*.snupkg
+*.dll
+*.exe
+
+# Entity Framework Core migrations history
+# This keeps the migration *files* but ignores the automatically generated
+# snapshot and build artifacts that can cause conflicts if checked in.
+# While the migration files themselves are typically version controlled,
+# the `obj` and `bin` directories contain compiled versions.
+[Bb]in/
+[Oo]bj/
+
+# Rider IDE
+.idea/
+
+# Dotnet temp files
+.dotnet/
+tmp/
+
+# Configuration files
+appsettings*.Development.json # If you want to keep production settings but ignore local dev settings
+appsettings*.Production.json # Example for ignoring production secrets locally
+
+# User-specific files
+*.user
+*.userprefs
+
+# Recommended for .NET projects
+# Specific to ASP.NET Core
+*.db # SQLite database files if used
+
+# Any other files that should be ignored
+# For example, if you have a local SQL database file, you might add:
+# *.mdf
+# *.ldf
+
+# Testing artifacts
+TestResults/

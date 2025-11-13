@@ -58,24 +58,9 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
             // Configure a mock MongoDB collection and register it as a singleton
             MockQuarterlyUpdatesCollection = new Mock<IMongoCollection<QuarterlyUpdate>>();
             services.AddSingleton(MockQuarterlyUpdatesCollection.Object);
-
-            // Build the service provider.
-            var sp = services.BuildServiceProvider();
-
-            // Create a scope to obtain a reference to the database contexts.
-            using (var scope = sp.CreateScope())
-            {
-                var scopedServices = scope.ServiceProvider;
-                var db = scopedServices.GetRequiredService<ApplicationDbContext>();
-                var logger = scopedServices
-                    .GetRequiredService<ILogger<CustomWebApplicationFactory<TProgram>>>();
-
-                // Ensure the database is created. ResetDatabase will handle per-test clearing.
-                db.Database.EnsureCreated();
-            }
         });
 
-        // Set the environment to Development so appsettings.Development.json is used
-        builder.UseEnvironment("Development");
+        // Set the environment to IntegrationTests to prevent SQL Server DbContext registration
+        builder.UseEnvironment("IntegrationTests");
     }
 }

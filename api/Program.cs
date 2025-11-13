@@ -48,8 +48,11 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 // Configure SQL Server with Entity Framework Core
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+if (!builder.Environment.IsEnvironment("IntegrationTests"))
+{
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+}
 
 // Configure MongoDB
 builder.Services.Configure<MongoDbSettings>(

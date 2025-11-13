@@ -1,7 +1,0 @@
-/home/enis/Work/tax2/api/api.Tests.Integration/obj/Debug/net9.0/api.Tests.Integration.csproj.AssemblyReference.cache
-/home/enis/Work/tax2/api/api.Tests.Integration/obj/Debug/net9.0/MvcTestingAppManifest.json
-/home/enis/Work/tax2/api/api.Tests.Integration/obj/Debug/net9.0/api.Tests.Integration.GeneratedMSBuildEditorConfig.editorconfig
-/home/enis/Work/tax2/api/api.Tests.Integration/obj/Debug/net9.0/api.Tests.Integration.AssemblyInfoInputs.cache
-/home/enis/Work/tax2/api/api.Tests.Integration/obj/Debug/net9.0/api.Tests.Integration.AssemblyInfo.cs
-/home/enis/Work/tax2/api/api.Tests.Integration/obj/Debug/net9.0/api.Tests.Integration.csproj.CoreCompileInputs.cache
-/home/enis/Work/tax2/api/api.Tests.Integration/obj/Debug/net9.0/api.Tests.Integration.sourcelink.json

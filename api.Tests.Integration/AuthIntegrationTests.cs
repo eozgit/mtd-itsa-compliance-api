@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection; // For CreateScope and GetRequir
 using System.Linq;
 using System;
 using Microsoft.AspNetCore.Hosting; // Added for IWebHostBuilder (if needed by factory setup)
+using Microsoft.EntityFrameworkCore; // Add this line
 
 namespace api.Tests.Integration;
 
