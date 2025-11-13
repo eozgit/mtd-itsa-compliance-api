@@ -43,41 +43,34 @@ public static class AuthEndpoints
             return Results.Ok(new AuthResponse(user.Id, user.UserName, token));
         });
     }
-
     // Helper for generating a mock JWT token (replace with real JWT implementation later)
     private static string GenerateMockJwtToken(string userId, string userName, string email)
     {
-        // Format: mock-jwt-token-for-<userId>-<userName>-<email>
-        // userId can contain hyphens, userName and email should not.
-        return $"mock-jwt-token-for-{userId}-{userName}-{email}";
+        // MODIFIED: Use '|' as separator to avoid clashes with hyphens in GUIDs/emails
+        return $"mock-jwt-token-for-{userId}|{userName}|{email}";
     }
 
     // Helper: Extract UserId from the mock Authorization header
-    // Marked as public static for use by other endpoint modules
     public static string? GetUserIdFromMockToken(string? authorizationHeader)
     {
-        // Console.WriteLine($"DEBUG: GetUserIdFromMockToken received: {authorizationHeader}"); // DIAGNOSTIC
         const string prefix = "Bearer mock-jwt-token-for-";
 
         if (string.IsNullOrEmpty(authorizationHeader) || !authorizationHeader.StartsWith(prefix))
         {
-            // Console.WriteLine("DEBUG: GetUserIdFromMockToken - Header is null/empty or doesn't start with expected prefix."); // DIAGNOSTIC
             return null;
         }
 
         var tokenPayload = authorizationHeader.Substring(prefix.Length);
-        // Console.WriteLine($"DEBUG: GetUserIdFromMockToken - Extracted token payload: {tokenPayload}"); // DIAGNOSTIC
+        // MODIFIED: Split by '|' instead of '-'
+        var parts = tokenPayload.Split('|');
 
-        var lastHyphenIndex = tokenPayload.LastIndexOf('-');
-        if (lastHyphenIndex == -1) return null; // Missing email
+        if (parts.Length != 3) // Expecting userId, userName, email
+        {
+            return null; // Invalid token format
+        }
 
-        var secondLastHyphenIndex = tokenPayload.LastIndexOf('-', lastHyphenIndex - 1);
-        if (secondLastHyphenIndex == -1) return null; // Missing userName
-
-        var userId = tokenPayload.Substring(0, secondLastHyphenIndex);
-
-        // Console.WriteLine($"DEBUG: GetUserIdFromMockToken - Parsed UserId: '{userId}'"); // DIAGNOSTIC
-
+        var userId = parts[0]; // The first part is the userId
         return userId;
     }
+
 }
