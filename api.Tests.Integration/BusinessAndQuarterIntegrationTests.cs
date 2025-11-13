@@ -434,5 +434,78 @@ public class BusinessAndQuarterIntegrationTests : IClassFixture<CustomWebApplica
     }
 
 
+    [Fact]
+    public async Task CalculateCumulativeEstimatedTaxLiability_ForSubmittedQuarters()
+    {
+        _factory.ResetDatabase();
+
+        // Arrange
+        var email = $"tax_calc_{Guid.NewGuid()}@example.com";
+        var username = "TaxCalcUser";
+        var password = "TaxCalcPassword123!";
+        var businessName = "Tax Calc Business";
+        var startDate = new DateTime(2025, 4, 6, 0, 0, 0, DateTimeKind.Utc); // MTD fiscal year start
+
+        var authResponse = await RegisterAndLoginUser(email, username, password);
+
+        _client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authResponse.Token);
+        var businessRequest = new BusinessRequest { Name = businessName, StartDate = startDate };
+        var businessResponse = await _client.PostAsJsonAsync("/api/business", businessRequest);
+        businessResponse.EnsureSuccessStatusCode();
+        var businessContent = await businessResponse.Content.ReadAsStringAsync();
+        var bizResponse = JsonSerializer.Deserialize<BusinessResponse>(businessContent, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert.NotNull(bizResponse);
+        var businessId = bizResponse.BusinessId;
+
+        // Manually create mock quarters, with some submitted and having profit for tax calculation
+        var mockQuarters = new List<QuarterlyUpdate>
+        {
+            new QuarterlyUpdate { Id = ObjectId.GenerateNewId().ToString(), BusinessId = businessId, TaxYear = "2025/26", QuarterName = "Q1", Status = "SUBMITTED", TaxableIncome = 25000.00m, AllowableExpenses = 5000.00m, NetProfit = 20000.00m }, // Net Profit: 20000
+            new QuarterlyUpdate { Id = ObjectId.GenerateNewId().ToString(), BusinessId = businessId, TaxYear = "2025/26", QuarterName = "Q2", Status = "SUBMITTED", TaxableIncome = 10000.00m, AllowableExpenses = 1000.00m, NetProfit = 9000.00m },  // Net Profit: 9000
+            new QuarterlyUpdate { Id = ObjectId.GenerateNewId().ToString(), BusinessId = businessId, TaxYear = "2025/26", QuarterName = "Q3", Status = "DRAFT", TaxableIncome = 100.00m, AllowableExpenses = 10.00m, NetProfit = 90.00m }, // DRAFT, should not count for submitted totals
+            new QuarterlyUpdate { Id = ObjectId.GenerateNewId().ToString(), BusinessId = businessId, TaxYear = "2025/26", QuarterName = "Q4", Status = "DRAFT", TaxableIncome = 0.00m, AllowableExpenses = 0.00m, NetProfit = 0.00m }
+        };
+
+        // Mock MongoDB Find and ToListAsync for the /api/quarters endpoint
+        var mockAsyncCursor = new Mock<IAsyncCursor<QuarterlyUpdate>>();
+        mockAsyncCursor.SetupSequence(_ => _.MoveNextAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true)
+            .ReturnsAsync(false);
+        mockAsyncCursor.SetupGet(_ => _.Current).Returns(mockQuarters);
+
+        _factory.MockQuarterlyUpdatesCollection
+            .Setup(c => c.FindAsync(
+                It.IsAny<FilterDefinition<QuarterlyUpdate>>(),
+                It.IsAny<FindOptions<QuarterlyUpdate, QuarterlyUpdate>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(mockAsyncCursor.Object);
+
+        // Act
+        var response = await _client.GetAsync("/api/quarters");
+
+        // Assert
+        response.EnsureSuccessStatusCode();
+        var responseString = await response.Content.ReadAsStringAsync();
+        var quartersResponse = JsonSerializer.Deserialize<QuartersResponse>(responseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        Assert.NotNull(quartersResponse);
+
+        // Expected Calculations (based on API logic: 20% tax above £12,570 personal allowance)
+        // Total Net Profit from SUBMITTED quarters: 20000.00 + 9000.00 = 29000.00
+        decimal expectedTotalNetProfitSubmitted = 29000.00m;
+        // Taxable amount: 29000.00 - 12570.00 (personal allowance) = 16430.00
+        // Cumulative Estimated Tax Liability: 16430.00 * 0.20 (20% tax rate) = 3286.00
+        decimal expectedCumulativeEstimatedTaxLiability = 3286.00m;
+
+        Assert.Equal(expectedTotalNetProfitSubmitted, quartersResponse.TotalNetProfitSubmitted);
+        Assert.Equal(expectedCumulativeEstimatedTaxLiability, quartersResponse.CumulativeEstimatedTaxLiability);
+
+        _factory.MockQuarterlyUpdatesCollection.Verify(
+            c => c.FindAsync(
+                It.Is<FilterDefinition<QuarterlyUpdate>>(filter => filter != null),
+                It.IsAny<FindOptions<QuarterlyUpdate, QuarterlyUpdate>>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
 
 }

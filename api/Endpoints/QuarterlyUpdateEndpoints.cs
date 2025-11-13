@@ -41,20 +41,41 @@ public static class QuarterlyUpdateEndpoints
                 return Results.NotFound($"No quarterly updates found for business ID {business.Id}.");
             }
 
-            const decimal taxRate = 0.20m;
             var submittedQuarters = quarters.Where(q => q.Status == "SUBMITTED").ToList();
-            var totalNetProfitSubmitted = submittedQuarters.Sum(q => q.NetProfit);
-            var cumulativeTaxLiability = totalNetProfitSubmitted * taxRate;
+
+            decimal totalNetProfitSubmitted = 0.00m;
+            // Define personal allowance and tax rate
+            decimal personalAllowance = 12570.00m; // Example: UK personal allowance for 2023/24
+            decimal basicTaxRate = 0.20m; // Example: 20% basic rate tax
+
+            foreach (var quarter in quarters)
+            {
+                // Ensure NetProfit is calculated for all quarters before summing
+                quarter.NetProfit = quarter.TaxableIncome - quarter.AllowableExpenses;
+
+                if (quarter.Status == "SUBMITTED")
+                {
+                    totalNetProfitSubmitted += quarter.NetProfit;
+                }
+            }
+
+            decimal cumulativeEstimatedTaxLiability = 0.00m;
+            // Calculate tax liability based on total net profit from submitted quarters
+            if (totalNetProfitSubmitted > personalAllowance)
+            {
+                decimal taxableAmount = totalNetProfitSubmitted - personalAllowance;
+                // Apply a flat tax rate on the amount above the personal allowance
+                cumulativeEstimatedTaxLiability = taxableAmount * basicTaxRate;
+            }
 
             return Results.Ok(new QuartersResponse
             {
-                Quarters = quarters,
+                Quarters = quarters.OrderBy(q => q.TaxYear).ThenBy(q => q.QuarterName).ToList(),
                 TotalNetProfitSubmitted = totalNetProfitSubmitted,
-                CumulativeEstimatedTaxLiability = cumulativeTaxLiability
+                CumulativeEstimatedTaxLiability = cumulativeEstimatedTaxLiability
             });
         })
-        .AddEndpointFilter<AuthAndBusinessFilter>(); // Apply the filter here!
-
+        .AddEndpointFilter<AuthAndBusinessFilter>();
         app.MapPut("/api/quarter/{id}", async (
             string id,
             QuarterlyUpdateRequest model,

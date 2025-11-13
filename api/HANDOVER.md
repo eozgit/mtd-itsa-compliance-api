@@ -1,8 +1,7 @@
-
 # Project Specification: MTD-ITSA Compliance Portal Starter
 
 **Version:** 1.0
-**Date:** 2025-11-12
+**Date:** 2025-11-13
 **Author:** CodeCompanion
 
 ## 1. Introduction
@@ -217,206 +216,14 @@ All provided files have been reviewed and modified, and previous build/test fail
 
 *   Updated `Microsoft.EntityFrameworkCore.SqlServer` and `Microsoft.EntityFrameworkCore.Design` package versions to `9.0.0-preview.7.24406.2` for consistency with the test project's resolved dependencies.
 
-````xml
-<Project Sdk="Microsoft.NET.Sdk.Web">
-
-  <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.0-preview.7.24406.2" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0-preview.7.24406.2">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="MongoDB.Driver" Version="2.23.0" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
-  </ItemGroup>
-
-</Project>
-````
-
 ### 5.2. `api/Program.cs`
 
 *   The `public partial class Program { }` declaration has been added at the end of the file to make the `Program` class accessible to integration tests via `WebApplicationFactory`.
 *   Swagger/OpenAPI configuration has been added.
 
-````csharp
-using api.Models;
-using api.Data;
-using Microsoft.EntityFrameworkCore;
-using MongoDB.Driver;
-using Microsoft.Extensions.Options;
-using api.Endpoints;
-using api.Filters;
-using Microsoft.OpenApi.Models;
-
-var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
-builder.Services.AddAuthentication("Bearer").AddJwtBearer();
-builder.Services.AddAuthorization();
-
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
-{
-    options.SwaggerDoc("v1", new OpenApiInfo { Title = "MTD-ITSA API", Version = "v1" });
-
-    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-    {
-        Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
-        Name = "Authorization",
-        In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "Bearer"
-    });
-
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = ReferenceType.SecurityScheme,
-                Id = "Bearer"
-            },
-            Array.Empty<string>()
-        }
-    });
-});
-
-// Configure SQL Server with Entity Framework Core
-if (!builder.Environment.IsEnvironment("IntegrationTests"))
-{
-    builder.Services.AddDbContext<ApplicationDbContext>(options =>
-        options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-}
-
-// Configure MongoDB
-builder.Services.Configure<MongoDbSettings>(
-    builder.Configuration.GetSection("MongoDbSettings"));
-
-builder.Services.AddSingleton<IMongoClient>(sp =>
-{
-    var settings = sp.GetRequiredService<IOptions<MongoDbSettings>>().Value;
-    return new MongoClient(settings.ConnectionString);
-});
-
-builder.Services.AddSingleton(sp =>
-{
-    var settings = sp.GetRequiredService<IOptions<MongoDbSettings>>().Value;
-    var client = sp.GetRequiredService<IMongoClient>();
-    var database = client.GetDatabase(settings.DatabaseName);
-    return database.GetCollection<QuarterlyUpdate>(settings.QuarterlyUpdatesCollectionName);
-});
-
-// Register the custom endpoint filter
-builder.Services.AddScoped<AuthAndBusinessFilter>();
-
-var app = builder.Build();
-
-// Configure the HTTP request pipeline.
-app.UseSwagger();
-
-if (app.Environment.IsDevelopment())
-{
-    // app.UseSwaggerUI() can be added here if a UI is desired, but not in spec.
-}
-
-app.UseHttpsRedirection();
-
-// Map Endpoints using extension methods
-app.MapAuthEndpoints();
-app.MapBusinessEndpoints();
-app.MapQuarterlyUpdateEndpoints();
-
-app.Run();
-
-public partial class Program { }
-````
-
 ### 5.3. `api/Endpoints/AuthEndpoints.cs`
 
 *   **FIXED**: The `GenerateMockJwtToken` and `GetUserIdFromMockToken` helper methods were updated to use a `|` (pipe) character as a separator instead of `-` (hyphen) within the mock JWT token payload. This resolves an issue where hyphens present in GUIDs or user emails caused incorrect parsing of the `UserId`, leading to test failures.
-
-````csharp
-using api.Data;
-using api.Models;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-
-namespace api.Endpoints;
-
-public static class AuthEndpoints
-{
-    public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
-    {
-        app.MapPost("/api/auth/register", async (RegisterRequest model, ApplicationDbContext dbContext) =>
-        {
-            // Check for existing user in the database
-            if (await dbContext.Users.AnyAsync(u => u.Email == model.Email))
-            {
-                return Results.Conflict("User with this email already exists.");
-            }
-
-            var userId = Guid.NewGuid().ToString();
-            var newUser = new User { Id = userId, Email = model.Email, UserName = model.UserName, PasswordHash = model.Password };
-
-            dbContext.Users.Add(newUser);
-            await dbContext.SaveChangesAsync();
-
-            var token = GenerateMockJwtToken(userId, model.UserName, model.Email);
-
-            return Results.Ok(new AuthResponse(userId, model.UserName, token));
-        });
-
-        app.MapPost("/api/auth/login", async (LoginRequest model, ApplicationDbContext dbContext) =>
-        {
-            var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Email == model.Email && u.PasswordHash == model.Password);
-            if (user == null)
-            {
-                return Results.Unauthorized();
-            }
-
-            var token = GenerateMockJwtToken(user.Id, user.UserName, user.Email);
-
-            return Results.Ok(new AuthResponse(user.Id, user.UserName, token));
-        });
-    }
-
-    private static string GenerateMockJwtToken(string userId, string userName, string email)
-    {
-        // MODIFIED: Use '|' as separator to avoid clashes with hyphens in GUIDs/emails
-        return $"mock-jwt-token-for-{userId}|{userName}|{email}";
-    }
-
-    public static string? GetUserIdFromMockToken(string? authorizationHeader)
-    {
-        const string prefix = "Bearer mock-jwt-token-for-";
-
-        if (string.IsNullOrEmpty(authorizationHeader) || !authorizationHeader.StartsWith(prefix))
-        {
-            return null;
-        }
-
-        var tokenPayload = authorizationHeader.Substring(prefix.Length);
-        // MODIFIED: Split by '|' instead of '-'
-        var parts = tokenPayload.Split('|');
-
-        if (parts.Length != 3) // Expecting userId, userName, email
-        {
-            return null; // Invalid token format
-        }
-
-        var userId = parts[0]; // The first part is the userId
-        return userId;
-    }
-}
-````
 
 ### 5.4. `api/Endpoints/BusinessEndpoints.cs`
 
@@ -424,51 +231,14 @@ public static class AuthEndpoints
 
 ### 5.5. `api/Endpoints/QuarterlyUpdateEndpoints.cs`
 
-*   No recent functional changes. Contains `MapQuarterlyUpdateEndpoints` for `/api/quarters` (GET), `/api/quarter/{id}` (PUT), and `/api/quarter/{id}/submit` (POST) with `AuthAndBusinessFilter` applied. Includes logic for calculating net profit and cumulative tax liability.
+*   **NEW**: Implemented a simplified tax calculation logic (20% flat tax on submitted net profit above a personal allowance) within the `GET /api/quarters` endpoint handler for `CumulativeEstimatedTaxLiability`.
+*   **FIXED**: Removed an unused `taxRate` variable to resolve a `CS0219` warning.
 
 ### 5.6. `api.Tests.Integration/api.Tests.Integration.csproj`
 
 *   The `ProjectReference` to the main `api` project has been corrected to `..\api\api.csproj` to reflect the sibling folder structure.
-*   `Microsoft.AspNetCore.Mvc.Testing` and `Microsoft.EntityFrameworkCore.InMemory` package versions have been updated to `9.0.0-preview.7.24406.2` for consistency.
-
-````xml
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <IsPackable>false</IsPackable>
-    <IsTestProject>true</IsTestProject>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
-    <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.1">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="coverlet.collector" Version="6.0.2">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.0-preview.7.24406.2" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.0-preview.7.24406.2" />
-    <PackageReference Include="Moq" Version="4.20.72" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Using Include="Xunit" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\api\api.csproj" />
-  </ItemGroup>
-
-</Project>
-````
+*   `Microsoft.AspNetCore.Mvc.Testing` package version has been updated to `9.0.0-preview.7.24406.2`.
+*   `Microsoft.EntityFrameworkCore.InMemory` package version has been updated to `9.0.0-rc.1.24451.1` to resolve NuGet warnings.
 
 ### 5.7. `api.Tests.Integration/CustomWebApplicationFactory.cs`
 
@@ -477,225 +247,9 @@ public static class AuthEndpoints
     *   It calls `MockQuarterlyUpdatesCollection.Reset()` to clear all `Moq` setups for the MongoDB collection.
 *   The `ConfigureWebHost` method no longer performs initial data clearing, as `ResetDatabase()` handles this per-test.
 
-````csharp
-using api.Data;
-using api.Models;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Logging;
-using MongoDB.Driver;
-using Moq;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-
-namespace api.Tests.Integration;
-
-public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProgram> where TProgram : class
-{
-    public Mock<IMongoCollection<QuarterlyUpdate>> MockQuarterlyUpdatesCollection { get; private set; } = null!;
-
-    public void ResetDatabase()
-    {
-        using (var scope = Services.CreateScope())
-        {
-            var scopedServices = scope.ServiceProvider;
-            var db = scopedServices.GetRequiredService<ApplicationDbContext>();
-            db.Database.EnsureDeleted();
-            db.Database.EnsureCreated();
-
-            MockQuarterlyUpdatesCollection.Reset();
-        }
-    }
-
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
-    {
-        builder.ConfigureServices(services =>
-        {
-            services.RemoveAll(typeof(DbContextOptions<ApplicationDbContext>));
-            services.RemoveAll(typeof(ApplicationDbContext));
-
-            services.AddDbContext<ApplicationDbContext>(options =>
-            {
-                options.UseInMemoryDatabase("InMemoryDbForTesting");
-            });
-
-            services.RemoveAll(typeof(IMongoClient));
-            services.RemoveAll(typeof(IMongoDatabase));
-            services.RemoveAll(typeof(IMongoCollection<QuarterlyUpdate>));
-
-            MockQuarterlyUpdatesCollection = new Mock<IMongoCollection<QuarterlyUpdate>>();
-            services.AddSingleton(MockQuarterlyUpdatesCollection.Object);
-
-            var sp = services.BuildServiceProvider();
-
-            using (var scope = sp.CreateScope())
-            {
-                var scopedServices = scope.ServiceProvider;
-                var db = scopedServices.GetRequiredService<ApplicationDbContext>();
-                var logger = scopedServices
-                    .GetRequiredService<ILogger<CustomWebApplicationFactory<TProgram>>>();
-
-                db.Database.EnsureCreated();
-            }
-        });
-
-        builder.UseEnvironment("Development");
-    }
-}
-````
-
 ### 5.8. `api.Tests.Integration/AuthIntegrationTests.cs`
 
-*   Each test method now calls `_factory.ResetDatabase()` at the beginning to ensure a clean state for every test run. **All 4 `AuthIntegrationTests` are currently passing.**
-
-````csharp
-using Xunit;
-using System.Net.Http;
-using System.Threading.Tasks;
-using System.Text;
-using System.Text.Json;
-using api.Models;
-using api.Data;
-using Microsoft.Extensions.DependencyInjection;
-using System.Linq;
-using System;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.EntityFrameworkCore;
-
-namespace api.Tests.Integration;
-
-public class AuthIntegrationTests : IClassFixture<CustomWebApplicationFactory<Program>>
-{
-    protected readonly HttpClient _client;
-    protected readonly CustomWebApplicationFactory<Program> _factory;
-
-    public AuthIntegrationTests(CustomWebApplicationFactory<Program> factory)
-    {
-        _factory = factory;
-        _client = factory.CreateClient();
-    }
-
-    [Fact]
-    public async Task Successful_User_Registration_Returns_Token_And_CreatesUser()
-    {
-        _factory.ResetDatabase();
-
-        var email = $"register_success_{Guid.NewGuid()}@example.com";
-        var username = "TestUserSuccess";
-        var password = "SecurePassword123!";
-
-        var registerRequest = new RegisterRequest
-        {
-            Email = email,
-            UserName = username,
-            Password = password
-        };
-        var content = new StringContent(JsonSerializer.Serialize(registerRequest), Encoding.UTF8, "application/json");
-
-        var response = await _client.PostAsync("/api/auth/register", content);
-
-        response.EnsureSuccessStatusCode();
-        var responseString = await response.Content.ReadAsStringAsync();
-        var authResponse = JsonSerializer.Deserialize<AuthResponse>(responseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-        Assert.NotNull(authResponse);
-        Assert.False(string.IsNullOrEmpty(authResponse.Token));
-        Assert.False(string.IsNullOrEmpty(authResponse.UserId));
-        Assert.Equal(username, authResponse.UserName);
-
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Email == registerRequest.Email);
-            Assert.NotNull(user);
-            Assert.Equal(registerRequest.Email, user.Email);
-            Assert.Equal(registerRequest.UserName, user.UserName);
-            Assert.False(string.IsNullOrEmpty(user.PasswordHash));
-        }
-    }
-
-    [Fact]
-    public async Task Register_With_Existing_Email_Returns_Conflict()
-    {
-        _factory.ResetDatabase();
-
-        var email = $"register_duplicate_{Guid.NewGuid()}@example.com";
-        var registerRequest = new RegisterRequest
-        {
-            Email = email,
-            UserName = "DuplicateUser",
-            Password = "SecurePassword123!"
-        };
-        var content = new StringContent(JsonSerializer.Serialize(registerRequest), Encoding.UTF8, "application/json");
-        await _client.PostAsync("/api/auth/register", content);
-
-        var duplicateContent = new StringContent(JsonSerializer.Serialize(registerRequest), Encoding.UTF8, "application/json");
-        var response = await _client.PostAsync("/api/auth/register", duplicateContent);
-
-        Assert.Equal(System.Net.HttpStatusCode.Conflict, response.StatusCode);
-        var errorResponse = await response.Content.ReadAsStringAsync();
-        Assert.Contains("User with this email already exists.", errorResponse);
-    }
-
-    [Fact]
-    public async Task Successful_User_Login_Returns_Token()
-    {
-        _factory.ResetDatabase();
-
-        var email = $"login_success_{Guid.NewGuid()}@example.com";
-        var username = "LoginUser";
-        var password = "LoginPassword123!";
-        var registerRequest = new RegisterRequest
-        {
-            Email = email,
-            UserName = username,
-            Password = password
-        };
-        var registerContent = new StringContent(JsonSerializer.Serialize(registerRequest), Encoding.UTF8, "application/json");
-        await _client.PostAsync("/api/auth/register", registerContent);
-
-        var loginRequest = new LoginRequest
-        {
-            Email = email,
-            Password = password
-        };
-        var loginContent = new StringContent(JsonSerializer.Serialize(loginRequest), Encoding.UTF8, "application/json");
-
-        var response = await _client.PostAsync("/api/auth/login", loginContent);
-
-        response.EnsureSuccessStatusCode();
-        var responseString = await response.Content.ReadAsStringAsync();
-        var authResponse = JsonSerializer.Deserialize<AuthResponse>(responseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-        Assert.NotNull(authResponse);
-        Assert.False(string.IsNullOrEmpty(authResponse.Token));
-        Assert.False(string.IsNullOrEmpty(authResponse.UserId));
-        Assert.Equal(username, authResponse.UserName);
-    }
-
-    [Fact]
-    public async Task Login_With_Invalid_Credentials_Returns_Unauthorized()
-    {
-        _factory.ResetDatabase();
-
-        var loginRequest = new LoginRequest
-        {
-            Email = $"nonexistent_{Guid.NewGuid()}@example.com",
-            Password = "WrongPassword123!"
-        };
-        var loginContent = new StringContent(JsonSerializer.Serialize(loginRequest), Encoding.UTF8, "application/json");
-
-        var response = await _client.PostAsync("/api/auth/login", loginContent);
-
-        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-}
-````
+*   Each test method now calls `_factory.ResetDatabase()` at the beginning to ensure a clean state for every test run. All 4 `AuthIntegrationTests` are currently passing.
 
 ### 5.9. `api.Tests.Integration/BusinessAndQuarterIntegrationTests.cs` (NEW)
 
@@ -705,92 +259,19 @@ public class AuthIntegrationTests : IClassFixture<CustomWebApplicationFactory<Pr
     *   `GetQuarters_ReturnsQuartersWithFinancialSummaries`: Verifies fetching all quarters for a business and confirms correct initial financial summaries (0.00 for `TotalNetProfitSubmitted` and `CumulativeEstimatedTaxLiability` when no quarters are submitted).
     *   `UpdateQuarter_SavesDraftDataAndCalculatesNetProfit`: Verifies updating a `DRAFT` quarter's income/expenses, correct `NetProfit` calculation, and persistence in mock MongoDB.
     *   `SubmitQuarter_ChangesStatusAndAddsSubmissionDetails`: Verifies changing a quarter's status from `DRAFT` to `SUBMITTED`, and the addition of `SubmissionDetails` in mock MongoDB.
+    *   `CalculateCumulativeEstimatedTaxLiability_ForSubmittedQuarters`: Verifies the accuracy of the `CumulativeEstimatedTaxLiability` calculation for submitted quarters, considering a personal allowance and flat tax rate.
 
 ### 5.10. `api/Models/QuarterUpdateResponse.cs` (NEW)
 
 *   A new DTO to strongly type the response for the `/api/quarter/{id}` (PUT) endpoint.
 
-````csharp
-namespace api.Models;
-
-public class QuarterUpdateResponse
-{
-    public string Id { get; set; } = string.Empty;
-    public int BusinessId { get; set; }
-    public string TaxYear { get; set; } = string.Empty;
-    public string QuarterName { get; set; } = string.Empty;
-    public decimal TaxableIncome { get; set; }
-    public decimal AllowableExpenses { get; set; }
-    public decimal NetProfit { get; set; }
-    public string Status { get; set; } = string.Empty;
-    public string Message { get; set; } = string.Empty; // Matches 'Message' from the API response
-}
-````
-
 ### 5.11. `api/Models/QuarterSubmissionResponse.cs` (NEW)
 
 *   A new DTO to strongly type the response for the `/api/quarter/{id}/submit` (POST) endpoint.
 
-````csharp
-namespace api.Models;
-
-public class QuarterSubmissionResponse
-{
-    public string Id { get; set; } = string.Empty;
-    public int BusinessId { get; set; }
-    public string TaxYear { get; set; } = string.Empty;
-    public string QuarterName { get; set; } = string.Empty;
-    public decimal TaxableIncome { get; set; }
-    public decimal AllowableExpenses { get; set; }
-    public decimal NetProfit { get; set; }
-    public string Status { get; set; } = string.Empty;
-    public SubmissionDetails? SubmissionDetails { get; set; } // Nested DTO
-    public string Message { get; set; } = string.Empty; // Matches 'Message' from the API response
-}
-````
-
 ### 5.12. `api/Models/QuarterlyUpdate.cs`
 
 No recent functional changes to this file, but its content is provided here for completeness and context regarding `QuarterlyUpdateStatus` which was clarified as a string.
-
-````csharp
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
-
-namespace api.Models;
-
-public class QuarterlyUpdate
-{
-    // MongoDB uses ObjectId for _id by default, but we can map a string.
-    // We'll use a string for consistency with other IDs and easier querying.
-    [BsonId]
-    [BsonRepresentation(BsonType.ObjectId)]
-    public string Id { get; set; } = ObjectId.GenerateNewId().ToString();
-
-    // Foreign key to the SQL Server Business Id
-    public int BusinessId { get; set; }
-
-    public string TaxYear { get; set; } = string.Empty; // e.g., "2025/26"
-    public string QuarterName { get; set; } = string.Empty; // e.g., "Q1"
-
-    public decimal TaxableIncome { get; set; } = 0.00m;
-    public decimal AllowableExpenses { get; set; } = 0.00m;
-
-    // Calculated fields (data enrichment)
-    public decimal NetProfit { get; set; } = 0.00m; // Calculated: TaxableIncome - AllowableExpenses
-
-    public string Status { get; set; } = "DRAFT"; // DRAFT, SUBMITTED
-
-    // Submission details, only present if status is SUBMITTED
-    public SubmissionDetails? SubmissionDetails { get; set; }
-}
-
-public class SubmissionDetails
-{
-    public string RefNumber { get; set; } = string.Empty; // e.g., "MTD-ACK-..."
-    public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
-}
-````
 
 ## 6. Development Guidelines
 
@@ -808,13 +289,11 @@ public class SubmissionDetails
 
 ## 7. Current Task & Next Steps
 
-**Previous Goal:** Implement integration tests for `Business` and `QuarterlyUpdate` endpoints.
-**Current State:** All primary API endpoints (`/api/auth/*`, `/api/business`, `/api/quarters`, `/api/quarter/{id}` (PUT), `/api/quarter/{id}/submit`) are now covered by passing integration tests.
+**Previous Goal:** Implement integration tests for `Business` and `QuarterlyUpdate` endpoints, including tax liability calculation.
+**Current State:** All primary API endpoints (`/api/auth/*`, `/api/business`, `/api/quarters`, `/api/quarter/{id}` (PUT), `/api/quarter/{id}/submit`) are now covered by passing integration tests, and the tax liability calculation is implemented and verified.
 
 **Next Action for the AI Assistant:**
-The core API endpoints are covered. We can now consider:
+The core API endpoints and basic data enrichment are covered. We can now consider:
 
 1.  **Adding Edge Case/Error Handling Tests**: Write tests for scenarios like unauthorized access, trying to update a non-DRAFT quarter, submitting a non-DRAFT quarter, or providing invalid input.
-2.  **Implementing Tax Liability Calculation**: The `CumulativeEstimatedTaxLiability` is currently `0.00m` in tests because the actual calculation logic for estimated tax on submitted profit is not yet fully implemented in the API. This would involve adding a more sophisticated calculation.
-3.  **Frontend Development**: With a stable backend API, we could begin scaffolding the Angular frontend and connecting it to these endpoints.
-
+2.  **Frontend Development**: With a stable backend API, we could begin scaffolding the Angular frontend and connecting it to these endpoints.

@@ -21,9 +21,8 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
 
-    <!-- UPDATED: Aligning to preview.7 versions -->
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.0-preview.7.24406.2" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.0-preview.7.24406.2" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.0-rc.1.24451.1" />
     <PackageReference Include="Moq" Version="4.20.72" />
   </ItemGroup>
 
