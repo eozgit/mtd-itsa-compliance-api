@@ -1,4 +1,3 @@
-
 using api.Data;
 using api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -63,7 +62,12 @@ public static class BusinessEndpoints
         .Produces(StatusCodes.Status401Unauthorized) // Explicitly defines 401 Unauthorized response
         .Produces(StatusCodes.Status409Conflict)     // Explicitly defines 409 Conflict response
         .AddEndpointFilter<AuthAndBusinessFilter>()  // Apply the filter here!
-        .WithOpenApi(); // Ensures these definitions are included in the OpenAPI spec
+        .WithOpenApi(operation =>
+        {
+            operation.Summary = "Register a new business for the authenticated user.";
+            operation.Description = "Registers a new self-employment business for the authenticated user and automatically initializes 4 fiscal quarters in 'DRAFT' status.";
+            return operation; // FIX: Return the operation object
+        });
     }
     // Helper for generating fiscal quarters (e.g., for MTD ITSA, starting April 6th)
     private static List<QuarterlyUpdate> GenerateFiscalQuarters(DateTime startDate, int businessId)

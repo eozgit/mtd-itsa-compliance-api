@@ -1,4 +1,3 @@
-
 using api.Data;
 using api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -32,7 +31,12 @@ public static class AuthEndpoints
         })
         .Produces<AuthResponse>(StatusCodes.Status200OK) // Explicitly defines 200 OK response with AuthResponse schema
         .Produces(StatusCodes.Status409Conflict)         // Explicitly defines 409 Conflict response
-        .WithOpenApi(); // Ensures these definitions are included in the OpenAPI spec
+        .WithOpenApi(operation =>
+        {
+            operation.Summary = "Register a new user account.";
+            operation.Description = "Creates a new user account with email, username, and password. Returns a mock JWT token upon successful registration.";
+            return operation; // FIX: Return the operation object
+        });
 
         app.MapPost("/api/auth/login", async (LoginRequest model, ApplicationDbContext dbContext) =>
         {
@@ -48,7 +52,12 @@ public static class AuthEndpoints
         })
         .Produces<AuthResponse>(StatusCodes.Status200OK) // Explicitly defines 200 OK response with AuthResponse schema
         .Produces(StatusCodes.Status401Unauthorized)     // Explicitly defines 401 Unauthorized response
-        .WithOpenApi(); // Ensures these definitions are included in the OpenAPI spec
+        .WithOpenApi(operation =>
+        {
+            operation.Summary = "Authenticate an existing user.";
+            operation.Description = "Authenticates an existing user with email and password. Returns a mock JWT token for the session.";
+            return operation; // FIX: Return the operation object
+        });
     }
     // Helper for generating a mock JWT token (replace with real JWT implementation later)
     private static string GenerateMockJwtToken(string userId, string userName, string email)

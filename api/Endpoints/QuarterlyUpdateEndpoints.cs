@@ -1,4 +1,3 @@
-
 using api.Data;
 using api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -78,17 +77,23 @@ public static class QuarterlyUpdateEndpoints
         .Produces(StatusCodes.Status401Unauthorized)         // Explicitly defines 401 Unauthorized response
         .Produces(StatusCodes.Status404NotFound)             // Explicitly defines 404 Not Found response
         .AddEndpointFilter<AuthAndBusinessFilter>()
-        .WithOpenApi(); // Ensures these definitions are included in the OpenAPI spec
+        .WithOpenApi(operation =>
+        {
+            operation.Summary = "Retrieve all fiscal quarters for the user's business.";
+            operation.Description = "Returns a list of all quarterly updates, including calculated net profit for each, and cumulative financial summaries (total net profit from submitted quarters and estimated tax liability).";
+            return operation; // FIX: Return the operation object
+        });
 
         app.MapPut("/api/quarter/{id}", async (
             string id,
             QuarterlyUpdateRequest model,
             HttpContext httpContext,
-            IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) => // Removed ApplicationDbContext
+            IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) =>
         {
             // Retrieve currentUserId and business from HttpContext.Items set by the filter
             var currentUserId = httpContext.Items["currentUserId"] as string;
-            var business = httpContext.Items["business"] as Business;
+            // FIX: Explicitly declare 'business' as nullable to resolve CS8601 warning.
+            Business? business = httpContext.Items["business"] as Business;
 
             if (string.IsNullOrEmpty(currentUserId)) return Results.Unauthorized(); // Should not happen
             if (business == null)
@@ -135,16 +140,22 @@ public static class QuarterlyUpdateEndpoints
         .Produces(StatusCodes.Status404NotFound)                  // Explicitly defines 404 Not Found response
         .Produces(StatusCodes.Status400BadRequest)                // Explicitly defines 400 Bad Request response
         .AddEndpointFilter<AuthAndBusinessFilter>() // Apply the filter here!
-        .WithOpenApi(); // Ensures these definitions are included in the OpenAPI spec
+        .WithOpenApi(operation =>
+        {
+            operation.Summary = "Update a specific quarterly update in 'DRAFT' status.";
+            operation.Description = "Saves or updates the taxable income and allowable expenses for a quarterly update identified by its ID. Only quarters in 'DRAFT' status can be updated. Net Profit is automatically calculated.";
+            return operation; // FIX: Return the operation object
+        });
 
         app.MapPost("/api/quarter/{id}/submit", async (
             string id,
             HttpContext httpContext,
-            IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) => // Removed ApplicationDbContext
+            IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) =>
         {
             // Retrieve currentUserId and business from HttpContext.Items set by the filter
             var currentUserId = httpContext.Items["currentUserId"] as string;
-            var business = httpContext.Items["business"] as Business;
+            // FIX: Explicitly declare 'business' as nullable to resolve CS8601 warning.
+            Business? business = httpContext.Items["business"] as Business;
 
             if (string.IsNullOrEmpty(currentUserId)) return Results.Unauthorized(); // Should not happen
             if (business == null)
@@ -195,6 +206,11 @@ public static class QuarterlyUpdateEndpoints
         .Produces(StatusCodes.Status404NotFound)                     // Explicitly defines 404 Not Found response
         .Produces(StatusCodes.Status400BadRequest)                   // Explicitly defines 400 Bad Request response
         .AddEndpointFilter<AuthAndBusinessFilter>() // Apply the filter here!
-        .WithOpenApi(); // Ensures these definitions are included in the OpenAPI spec
+        .WithOpenApi(operation =>
+        {
+            operation.Summary = "Submit a quarterly update.";
+            operation.Description = "Marks a specific quarterly update as 'SUBMITTED', generating a mock reference number and submission timestamp. Only quarters in 'DRAFT' status can be submitted.";
+            return operation; // FIX: Return the operation object
+        });
     }
 }
