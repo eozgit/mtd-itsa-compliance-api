@@ -1,13 +1,12 @@
 using api.Data;
 using api.Models;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Builder; // Required for IEndpointRouteBuilder extension
-using Microsoft.AspNetCore.Http; // Required for Results, HttpContext
-using MongoDB.Driver; // For IMongoCollection
-using api.Filters; // NEW: Import the Filters namespace
-using Microsoft.AspNetCore.OpenApi; // NEW: Required for WithOpenApi extension
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using MongoDB.Driver;
+using api.Filters;
+using Microsoft.AspNetCore.OpenApi;
 
-// Import the AuthEndpoints for the helper function
 using static api.Endpoints.AuthEndpoints;
 
 namespace api.Endpoints;
@@ -18,13 +17,13 @@ public static class QuarterlyUpdateEndpoints
     {
         app.MapGet("/api/quarters", async (
             HttpContext httpContext,
-            IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) => // Removed ApplicationDbContext, as business is already retrieved
+            IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) =>
         {
             // Retrieve currentUserId and business from HttpContext.Items set by the filter
             var currentUserId = httpContext.Items["currentUserId"] as string;
-            var business = httpContext.Items["business"] as Business;
+            Business? business = httpContext.Items["business"] as Business;
 
-            if (string.IsNullOrEmpty(currentUserId)) return Results.Unauthorized(); // Should not happen
+            if (string.IsNullOrEmpty(currentUserId)) return Results.Unauthorized();
             if (business == null)
             {
                 return Results.NotFound("No business found for the current user.");
@@ -39,8 +38,6 @@ public static class QuarterlyUpdateEndpoints
                 return Results.NotFound($"No quarterly updates found for business ID {business.Id}.");
             }
 
-            var submittedQuarters = quarters.Where(q => q.Status == "SUBMITTED").ToList();
-
             decimal totalNetProfitSubmitted = 0.00m;
             // Define personal allowance and tax rate
             decimal personalAllowance = 12570.00m; // Example: UK personal allowance for 2023/24
@@ -48,7 +45,6 @@ public static class QuarterlyUpdateEndpoints
 
             foreach (var quarter in quarters)
             {
-                // Ensure NetProfit is calculated for all quarters before summing
                 quarter.NetProfit = quarter.TaxableIncome - quarter.AllowableExpenses;
 
                 if (quarter.Status == "SUBMITTED")
@@ -73,15 +69,15 @@ public static class QuarterlyUpdateEndpoints
                 CumulativeEstimatedTaxLiability = cumulativeEstimatedTaxLiability
             });
         })
-        .Produces<QuartersResponse>(StatusCodes.Status200OK) // Explicitly defines 200 OK response
-        .Produces(StatusCodes.Status401Unauthorized)         // Explicitly defines 401 Unauthorized response
-        .Produces(StatusCodes.Status404NotFound)             // Explicitly defines 404 Not Found response
+        .Produces<QuartersResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status404NotFound)
         .AddEndpointFilter<AuthAndBusinessFilter>()
         .WithOpenApi(operation =>
         {
             operation.Summary = "Retrieve all fiscal quarters for the user's business.";
             operation.Description = "Returns a list of all quarterly updates, including calculated net profit for each, and cumulative financial summaries (total net profit from submitted quarters and estimated tax liability).";
-            return operation; // FIX: Return the operation object
+            return operation;
         });
 
         app.MapPut("/api/quarter/{id}", async (
@@ -90,20 +86,19 @@ public static class QuarterlyUpdateEndpoints
             HttpContext httpContext,
             IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) =>
         {
-            // Retrieve currentUserId and business from HttpContext.Items set by the filter
-            var currentUserId = httpContext.Items["currentUserId"] as string;
-            // FIX: Explicitly declare 'business' as nullable to resolve CS8601 warning.
-            Business? business = httpContext.Items["business"] as Business;
+            // Use explicit nullable cast with null-forgiving operator
+            string? currentUserId = (string?)httpContext.Items["currentUserId"]!;
+            Business? business = (Business?)httpContext.Items["business"]!;
 
-            if (string.IsNullOrEmpty(currentUserId)) return Results.Unauthorized(); // Should not happen
+            if (string.IsNullOrEmpty(currentUserId)) return Results.Unauthorized();
             if (business == null)
             {
                 return Results.NotFound("No business found for the current user.");
             }
 
             var quarterToUpdate = await quarterlyUpdatesCollection
-                                        .Find(q => q.Id == id && q.BusinessId == business.Id)
-                                        .FirstOrDefaultAsync();
+                                         .Find(q => q.Id == id && q.BusinessId == business.Id)
+                                         .FirstOrDefaultAsync();
 
             if (quarterToUpdate == null)
             {
@@ -121,7 +116,6 @@ public static class QuarterlyUpdateEndpoints
 
             await quarterlyUpdatesCollection.ReplaceOneAsync(q => q.Id == id, quarterToUpdate);
 
-            // Using the strongly typed DTO as indicated in the HANDOVER.md
             return Results.Ok(new QuarterUpdateResponse
             {
                 Id = quarterToUpdate.Id,
@@ -135,16 +129,16 @@ public static class QuarterlyUpdateEndpoints
                 Message = "Draft saved."
             });
         })
-        .Produces<QuarterUpdateResponse>(StatusCodes.Status200OK) // Explicitly defines 200 OK response with the new DTO
-        .Produces(StatusCodes.Status401Unauthorized)              // Explicitly defines 401 Unauthorized response
-        .Produces(StatusCodes.Status404NotFound)                  // Explicitly defines 404 Not Found response
-        .Produces(StatusCodes.Status400BadRequest)                // Explicitly defines 400 Bad Request response
-        .AddEndpointFilter<AuthAndBusinessFilter>() // Apply the filter here!
+        .Produces<QuarterUpdateResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status400BadRequest)
+        .AddEndpointFilter<AuthAndBusinessFilter>()
         .WithOpenApi(operation =>
         {
             operation.Summary = "Update a specific quarterly update in 'DRAFT' status.";
             operation.Description = "Saves or updates the taxable income and allowable expenses for a quarterly update identified by its ID. Only quarters in 'DRAFT' status can be updated. Net Profit is automatically calculated.";
-            return operation; // FIX: Return the operation object
+            return operation;
         });
 
         app.MapPost("/api/quarter/{id}/submit", async (
@@ -152,20 +146,19 @@ public static class QuarterlyUpdateEndpoints
             HttpContext httpContext,
             IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) =>
         {
-            // Retrieve currentUserId and business from HttpContext.Items set by the filter
-            var currentUserId = httpContext.Items["currentUserId"] as string;
-            // FIX: Explicitly declare 'business' as nullable to resolve CS8601 warning.
-            Business? business = httpContext.Items["business"] as Business;
+            // Use explicit nullable cast with null-forgiving operator
+            string? currentUserId = (string?)httpContext.Items["currentUserId"]!;
+            Business? business = (Business?)httpContext.Items["business"]!;
 
-            if (string.IsNullOrEmpty(currentUserId)) return Results.Unauthorized(); // Should not happen
+            if (string.IsNullOrEmpty(currentUserId)) return Results.Unauthorized();
             if (business == null)
             {
                 return Results.NotFound("No business found for the current user.");
             }
 
             var quarterToSubmit = await quarterlyUpdatesCollection
-                                        .Find(q => q.Id == id && q.BusinessId == business.Id)
-                                        .FirstOrDefaultAsync();
+                                         .Find(q => q.Id == id && q.BusinessId == business.Id)
+                                         .FirstOrDefaultAsync();
 
             if (quarterToSubmit == null)
             {
@@ -186,7 +179,6 @@ public static class QuarterlyUpdateEndpoints
 
             await quarterlyUpdatesCollection.ReplaceOneAsync(q => q.Id == id, quarterToSubmit);
 
-            // Using the strongly typed DTO as indicated in the HANDOVER.md
             return Results.Ok(new QuarterSubmissionResponse
             {
                 Id = quarterToSubmit.Id,
@@ -201,16 +193,16 @@ public static class QuarterlyUpdateEndpoints
                 Message = "Quarter submitted successfully."
             });
         })
-        .Produces<QuarterSubmissionResponse>(StatusCodes.Status200OK) // Explicitly defines 200 OK response with the new DTO
-        .Produces(StatusCodes.Status401Unauthorized)                 // Explicitly defines 401 Unauthorized response
-        .Produces(StatusCodes.Status404NotFound)                     // Explicitly defines 404 Not Found response
-        .Produces(StatusCodes.Status400BadRequest)                   // Explicitly defines 400 Bad Request response
-        .AddEndpointFilter<AuthAndBusinessFilter>() // Apply the filter here!
+        .Produces<QuarterSubmissionResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status400BadRequest)
+        .AddEndpointFilter<AuthAndBusinessFilter>()
         .WithOpenApi(operation =>
         {
             operation.Summary = "Submit a quarterly update.";
             operation.Description = "Marks a specific quarterly update as 'SUBMITTED', generating a mock reference number and submission timestamp. Only quarters in 'DRAFT' status can be submitted.";
-            return operation; // FIX: Return the operation object
+            return operation;
         });
     }
 }

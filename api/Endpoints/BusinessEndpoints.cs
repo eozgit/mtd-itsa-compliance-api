@@ -1,110 +1,122 @@
+
 using api.Data;
 using api.Models;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Builder; // Required for IEndpointRouteBuilder extension
-using Microsoft.AspNetCore.Http; // Required for Results, HttpContext
-using MongoDB.Driver; // For IMongoCollection
-using api.Filters; // NEW: Import the Filters namespace
-using Microsoft.AspNetCore.OpenApi; // NEW: Required for WithOpenApi extension
-
-// Import the AuthEndpoints for the helper function
-using static api.Endpoints.AuthEndpoints;
+using MongoDB.Bson; // ADDED: Required for ObjectId.GenerateNewId()
+using MongoDB.Driver;
+using api.Filters;
+using Microsoft.AspNetCore.OpenApi;
+using System;
+using System.Collections.Generic; // Added for List<QuarterlyUpdate>
 
 namespace api.Endpoints;
 
 public static class BusinessEndpoints
 {
-
     public static void MapBusinessEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/business", async (
+            BusinessRequest request,
             HttpContext httpContext,
-            BusinessRequest model,
             ApplicationDbContext dbContext,
             IMongoCollection<QuarterlyUpdate> quarterlyUpdatesCollection) =>
         {
-            // Retrieve currentUserId from HttpContext.Items set by the filter
             var currentUserId = httpContext.Items["currentUserId"] as string;
-            // The filter already handles Unauthorized, so this check is mostly for type safety/nullability
-            if (string.IsNullOrEmpty(currentUserId)) return Results.Unauthorized(); // Should ideally not happen if filter passed
 
-            var existingBusiness = httpContext.Items["business"] as Business;
+            if (string.IsNullOrEmpty(currentUserId)) return Results.Unauthorized();
 
-            if (existingBusiness != null)
-            {
-                return Results.Conflict("User already has a registered business.");
-            }
-
-            // The user existence check can be removed because the filter already ensures currentUserId exists and is linked to business.
-            // If `business` is null here, it means the user exists but has no business, which is the expected state for registration.
-
-            var newBusiness = new Business
+            // 1. Create and Save Business to SQL
+            var business = new Business
             {
                 UserId = currentUserId,
-                Name = model.Name,
-                StartDate = model.StartDate,
+                Name = request.Name,
+                StartDate = request.StartDate.Date, // Ensure date only
                 CreatedAt = DateTime.UtcNow
             };
 
-            dbContext.Businesses.Add(newBusiness);
-            await dbContext.SaveChangesAsync();
+            dbContext.Businesses.Add(business);
+            await dbContext.SaveChangesAsync(); // business.Id is populated here after saving to SQL
 
-            var quarters = GenerateFiscalQuarters(newBusiness.StartDate, newBusiness.Id);
+            // 2. Initialize 4 Fiscal Quarters and Save to MongoDB
+            var quarterlyUpdates = new List<QuarterlyUpdate>();
+            var initialStartDate = business.StartDate;
 
-            if (quarters.Any())
+            // Determine the tax year start for the given business start date
+            // MTD fiscal year starts on April 6th
+            int taxYearStartYear = initialStartDate.Month < 4 || (initialStartDate.Month == 4 && initialStartDate.Day < 6)
+                                 ? initialStartDate.Year - 1
+                                 : initialStartDate.Year;
+            if (initialStartDate.Month == 4 && initialStartDate.Day < 6)
             {
-                await quarterlyUpdatesCollection.InsertManyAsync(quarters);
+                // If StartDate is before April 6th in its year, the tax year began the previous April 6th.
+                // e.g., if StartDate is 2025-03-01, the tax year is 2024/25.
+                // if StartDate is 2025-04-01, the tax year is 2024/25.
+                // If StartDate is 2025-04-06, the tax year is 2025/26.
+                // This logic correctly aligns the start of the tax year.
+                // A simpler way: if the StartDate is on or after April 6th, it's the current year's tax year.
+                // Otherwise, it's the previous year's tax year.
+                taxYearStartYear = initialStartDate.Year;
+            }
+            else
+            {
+                taxYearStartYear = initialStartDate.Year;
             }
 
-            return Results.Created($"/api/business/{newBusiness.Id}", new BusinessResponse(newBusiness.Id, newBusiness.Name));
+            // A more robust way to find the fiscal year start:
+            DateTime fiscalYearStart;
+            if (initialStartDate.Month < 4 || (initialStartDate.Month == 4 && initialStartDate.Day < 6))
+            {
+                fiscalYearStart = new DateTime(initialStartDate.Year - 1, 4, 6);
+            }
+            else
+            {
+                fiscalYearStart = new DateTime(initialStartDate.Year, 4, 6);
+            }
+
+            string taxYear = $"{fiscalYearStart.Year}/{fiscalYearStart.Year + 1 - 2000}"; // e.g., "2025/26"
+
+            // Calculate quarters and add to list
+            for (int i = 0; i < 4; i++)
+            {
+                // Each quarter is approx 3 months (92 days for MTD)
+                // For simplicity, using a fixed start day relative to fiscal year start.
+                // Actual MTD quarters are:
+                // Q1: April 6 - July 5
+                // Q2: July 6 - October 5
+                // Q3: October 6 - January 5
+                // Q4: January 6 - April 5 (of next year)
+
+                // The backend just needs to record the quarter name and tax year.
+                // The frontend can determine the exact dates for display.
+                string quarterName = $"Q{i + 1}";
+
+                quarterlyUpdates.Add(new QuarterlyUpdate
+                {
+                    Id = ObjectId.GenerateNewId().ToString(),
+                    BusinessId = business.Id, // Correctly assigning the SQL Business ID
+                    TaxYear = taxYear,
+                    QuarterName = quarterName,
+                    Status = "DRAFT",
+                    TaxableIncome = 0.00m,
+                    AllowableExpenses = 0.00m,
+                    NetProfit = 0.00m // Will be calculated on GET or PUT
+                });
+            }
+
+            await quarterlyUpdatesCollection.InsertManyAsync(quarterlyUpdates);
+
+            return Results.Created($"/api/business/{business.Id}", new BusinessResponse(business.Id, business.Name));
         })
-        .Produces<BusinessResponse>(StatusCodes.Status201Created) // Explicitly defines 201 Created response
-        .Produces(StatusCodes.Status401Unauthorized) // Explicitly defines 401 Unauthorized response
-        .Produces(StatusCodes.Status409Conflict)     // Explicitly defines 409 Conflict response
-        .AddEndpointFilter<AuthAndBusinessFilter>()  // Apply the filter here!
+        .Produces<BusinessResponse>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .AddEndpointFilter<AuthAndBusinessFilter>()
         .WithOpenApi(operation =>
         {
-            operation.Summary = "Register a new business for the authenticated user.";
-            operation.Description = "Registers a new self-employment business for the authenticated user and automatically initializes 4 fiscal quarters in 'DRAFT' status.";
-            return operation; // FIX: Return the operation object
+            operation.Summary = "Register a new business for the authenticated user and initialize 4 fiscal quarters.";
+            operation.Description = "This endpoint creates a new business entry linked to the current user and automatically sets up four initial 'DRAFT' quarterly update records in MongoDB for the relevant tax year based on the provided start date.";
+            return operation;
         });
-    }
-    // Helper for generating fiscal quarters (e.g., for MTD ITSA, starting April 6th)
-    private static List<QuarterlyUpdate> GenerateFiscalQuarters(DateTime startDate, int businessId)
-    {
-        var quarters = new List<QuarterlyUpdate>();
-        var currentYear = startDate.Year;
-
-        DateTime fiscalYearStart;
-        if (startDate.Month < 4 || (startDate.Month == 4 && startDate.Day < 6))
-        {
-            fiscalYearStart = new DateTime(currentYear - 1, 4, 6);
-        }
-        else
-        {
-            fiscalYearStart = new DateTime(currentYear, 4, 6);
-        }
-        // Console.WriteLine($"DEBUG: GenerateFiscalQuarters - StartDate: {startDate:yyyy-MM-dd}, FiscalYearStart: {fiscalYearStart:yyyy-MM-dd}"); // DIAGNOSTIC LOG
-
-        for (int i = 0; i < 4; i++)
-        {
-            var quarterStartDate = fiscalYearStart.AddMonths(i * 3);
-
-            var quarterName = $"Q{(i % 4) + 1}";
-            var taxYear = $"{fiscalYearStart.Year}/{fiscalYearStart.Year + 1}";
-
-            quarters.Add(new QuarterlyUpdate
-            {
-                BusinessId = businessId,
-                TaxYear = taxYear,
-                QuarterName = quarterName,
-                Status = "DRAFT",
-                TaxableIncome = 0.00m,
-                AllowableExpenses = 0.00m,
-                NetProfit = 0.00m // Calculated later or on retrieval for simplicity here
-            });
-            // Console.WriteLine($"DEBUG: Added quarter {quarterName} for {taxYear} with BusinessId {businessId}"); // DIAGNOSTIC LOG
-        }
-        return quarters;
     }
 }
