@@ -75,6 +75,22 @@ builder.Services.AddSingleton(sp =>
 // Register the custom endpoint filter
 builder.Services.AddScoped<AuthAndBusinessFilter>();
 
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        sqlOptions =>
+        {
+            // Transient Fault Handling: This allows the application to retry SQL commands
+            // if the server is temporarily unavailable (e.g., still initializing).
+            sqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 10,
+                maxRetryDelay: TimeSpan.FromSeconds(30),
+                errorNumbersToAdd: null
+            );
+        }
+    )
+);
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -93,6 +109,23 @@ app.UseHttpsRedirection();
 app.MapAuthEndpoints();
 app.MapBusinessEndpoints();
 app.MapQuarterlyUpdateEndpoints();
+
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        var context = services.GetRequiredService<ApplicationDbContext>();
+        // CRITICAL: This line creates the database if it doesn't exist and applies all pending migrations.
+        await context.Database.MigrateAsync();
+        Console.WriteLine("Database migration complete.");
+    }
+    catch (Exception ex)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "An error occurred while migrating the database.");
+    }
+}
 
 app.Run();
 

@@ -1,3 +1,4 @@
+
 # MTD-ITSA Compliance Portal
 
 This repository contains the full-stack boilerplate for a **Making Tax Digital for Income Tax Self Assessment (MTD-ITSA) Compliance Portal**. It provides a robust starter kit with pre-built cross-cutting concerns to enable rapid development of core business logic and an integrated Angular frontend.
@@ -34,8 +35,8 @@ To set up and run the full-stack application, follow these steps.
 ### Prerequisites
 
 *   .NET SDK 9.0 (or compatible version)
-*   Node.js (LTS version) & npm
-*   Angular CLI (`npm install -g @angular/cli`)
+*   Node.js (LTS version) & npm (for frontend development, if contributing there)
+*   Angular CLI (`npm install -g @angular/cli`) (for frontend development, if contributing there)
 *   SQL Server instance (local or remote)
 *   MongoDB instance (local or remote, e.g., Docker container)
     *   `docker run -d -p 27017:27017 --name mongo-db mongo`
@@ -53,35 +54,18 @@ Please refer to the [Backend README](./api/README.md) for specifics on:
 *   Applying Entity Framework Core migrations.
 *   Running the backend API.
 
-### 4.2. Frontend Setup (Planned)
+### 4.2. Frontend Setup
 
-*(Note: The Angular frontend part is conceptual at this stage and needs to be implemented. The instructions below are placeholders for future development.)*
+The Angular frontend for this project is hosted in a separate repository.
 
-Navigate to the `ClientApp` (or similar) directory, if it existed, for frontend setup instructions.
-
-```bash
-cd ClientApp # Assuming the Angular project lives here
-```
-
-*   **Install dependencies:**
-    ```bash
-    npm install
-    ```
-*   **Run the Angular development server:**
-    ```bash
-    ng serve
-    ```
-    The frontend typically runs on `http://localhost:4200`.
+Please refer to the [Frontend Repository](https://github.com/eozgit/mtd-itsa-compliance-fe) for setup instructions, development server details, API client generation, and testing.
 
 ### 4.3. Running the Full Stack
 
-If using the official `.NET/Angular` starter template, you can typically run both frontend and backend together from the `api` project root:
-
-```bash
-cd api
-dotnet run
-```
-This command will start the ASP.NET Core backend, which will in turn proxy requests to the Angular development server.
+To run the full stack, you will need to:
+1.  Start the backend API (see section 4.1).
+2.  Deploy or run the frontend application separately (see section 4.2 and its respective repository).
+3.  Ensure your frontend is configured to point to the backend API's address (e.g., `http://localhost:5129`).
 
 ## 5. API Documentation
 
@@ -115,3 +99,4 @@ The backend exposes an OpenAPI (Swagger) specification:
 ├── README.md              # This file - high-level project overview
 ├── test_full_flow.sh      # Bash script to test the full API flow
 └── ... other configuration files ...
+
