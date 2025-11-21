@@ -14,11 +14,11 @@ Here are some visual demonstrations showcasing key functionalities of the MTD-IT
 
 #### Register for an account
 This image displays the user registration form, complete with input fields for email, username, and password. It demonstrates the application's client-side validation, showing a "Password is required" message when the field is left empty.
-![User Registration Form with Validation](https://raw.githubusercontent.com/eozgit/mtd-itsa-compliance-fe/main/media/password-error-screenshot.png "Register for an account with validation errors")
+![User Registration Form with Validation](https://raw.githubusercontent.com/eozgit/mtd-itsa-compliance-fe/main/public/password-error-screenshot.png "Register for an account with validation errors")
 
 #### Business Setup Form
 This screenshot captures the "Set Up Your Business" form. It highlights the required fields "Business Name" and "Accounting Start Date" with clear validation messages, ensuring users provide essential information for their self-employment business.
-![Business Setup Form with Required Field Indicators](https://raw.githubusercontent.com/eozgit/mtd-itsa-compliance-fe/main/media/business-setup-error-screenshot.png "Business Setup form showing validation errors")
+![Business Setup Form with Required Field Indicators](https://raw.githubusercontent.com/eozgit/mtd-itsa-compliance-fe/main/public/business-setup-error-screenshot.png "Business Setup form showing validation errors")
 
 #### Successful Business Registration Flow
 This video demonstrates a seamless user experience where a new user successfully registers a business. Upon successful submission of business details, the application smoothly navigates and redirects the user to their personalized dashboard, showcasing the completed setup process.
@@ -29,7 +29,7 @@ https://github.com/user-attachments/assets/8b91786f-adc4-432c-8214-091c5fe317f2
 
 #### Main User Dashboard with Financial Overview
 This image presents the main dashboard of the MTD-ITSA Compliance Portal. It welcomes the user and features an "Income vs. Expenses Trend" chart, providing a clear and engaging visualization of key financial data over time.
-![Main User Dashboard with Financial Overview](https://raw.githubusercontent.com/eozgit/mtd-itsa-compliance-fe/main/media/chart-fully-rendered.png "Main User Dashboard showing Income vs. Expenses Trend")
+![Main User Dashboard with Financial Overview](https://raw.githubusercontent.com/eozgit/mtd-itsa-compliance-fe/main/public/chart-fully-rendered.png "Main User Dashboard showing Income vs. Expenses Trend")
 
 #### Dynamic Net Profit/Loss Calculation in Quarterly Data Entry
 Observe the dynamic capabilities of the "Quarter Form" in this video. As users input their taxable income and allowable expenses, the system instantly calculates and displays the "Net Profit/Loss," providing immediate financial feedback.
