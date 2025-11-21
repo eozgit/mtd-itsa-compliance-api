@@ -73,7 +73,7 @@ All endpoints requiring authentication expect a `Bearer {token}` in the `Authori
     // filepath: appsettings.Development.json
     {
       "ConnectionStrings": {
-        "DefaultConnection": "Server=localhost;Database=mtditsa;User Id=SA;Password=55555Percent;TrustServerCertificate=True"
+        "DefaultConnection": "Server=localhost;Database=mtditsa;User Id=SA;Password=Exposed#1;TrustServerCertificate=True"
       }
     }
     ```
